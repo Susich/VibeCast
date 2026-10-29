@@ -319,7 +319,7 @@ private fun StatusScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "В приложении VibeCast на ПК выберите телефон из списка — он находится " +
-                        "по mDNS в той же Wi-Fi сети. Для первого подключения введите токен " +
+                        "автоматически в той же Wi-Fi сети. Для первого подключения введите токен " +
                         "или вставьте ссылку, скопированную на телефоне.",
                     color = VibeMuted,
                     fontSize = 13.sp,
@@ -465,7 +465,7 @@ private fun ConnectionCard(state: ServerRuntime.State) {
                 Column {
                     Text("Подключение с ПК", color = VibeText, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Компьютер найдёт телефон сам по mDNS",
+                        "Компьютер найдёт телефон сам в Wi-Fi сети",
                         color = VibeMuted,
                         fontSize = 12.sp,
                     )
