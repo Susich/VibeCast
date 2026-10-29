@@ -27,6 +27,8 @@ Android (Ktor)  ── HTTP + Range + SSE ──►  PC (Tauri + React + SQLite)
   «Стрим/Кэш».
 - Обновление каталога по SSE без перезапуска ПК-приложения.
 - Офлайн-режим: каталог и кэш доступны, когда телефон выключен.
+- Чистый первый запуск: никаких демо-треков — каталог появляется только после
+  подключения телефона. Явное отключение очищает каталог на ПК.
 - Токен обязателен для всех ручек, кроме `/health`; в логи и mDNS не попадает.
 
 ## Структура репозитория
@@ -36,7 +38,7 @@ android/            Android-приложение (Kotlin, Compose, Ktor CIO)
   app/              UI, MediaStore, Foreground Service, mDNS, QR
   shared/           протокол, маппинг каталога, Ktor-сервер, JUnit-тесты
 desktop/            Tauri 2 + React + TypeScript + Vite
-  src/              UI, состояние, dev-мок для браузера
+  src/              UI, состояние, dev-мок (только VITE_MOCK=1)
   src-tauri/        Rust: SQLite, HTTP/SSE, mDNS, mpv IPC, кэш
 scripts/            mock-server.mjs (протокол без телефона), генератор иконок
 docs/               PLAN.md, TESTING.md
@@ -164,8 +166,14 @@ curl -i -H "Authorization: Bearer demo-token-123" \
 Ожидается `206 Partial Content`, `Content-Range: bytes 100-200/352844` и
 `Content-Length: 101`.
 
-В браузере (вне Tauri) интерфейс работает на встроенном демо-источнике — это
-удобно для проверки вёрстки: `npm run dev` и открыть `http://127.0.0.1:1420`.
+Для проверки вёрстки в браузере можно явно включить демо-источник:
+
+```bash
+VITE_MOCK=1 npm run dev
+```
+
+Без `VITE_MOCK=1` браузерная страница показывает ошибку запуска, а не фальшивый
+каталог. В обычном приложении Tauri демо-треков нет никогда.
 
 ## Тесты
 
