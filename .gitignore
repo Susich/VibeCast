@@ -1,0 +1,62 @@
+# VibeCast — не коммитить секреты и артефакты
+
+# Secrets / local config
+*.token
+*.secret
+.env
+.env.*
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# Android / Gradle
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/shared/build/
+android/**/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Desktop / Node
+desktop/node_modules/
+desktop/dist/
+desktop/.vite/
+desktop/*.tsbuildinfo
+*.log
+npm-debug.log*
+
+# Rust / Tauri
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/binaries/
+desktop/src-tauri/tauri.conf.local.json
+
+# Test / cache
+.cache/
+coverage/
+**/build/reports/
+**/build/test-results/
+*.part
+*.mp3
+*.flac
+*.m4a
+*.ogg
+*.wav
+*.opus
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
