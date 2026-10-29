@@ -182,13 +182,20 @@ class ServerService : Service() {
             val ip = localIpAddress()
             val publisher = NsdPublisher(
                 context = applicationContext,
-                serviceName = "VibeCast-${Build.MODEL ?: "Android"}",
+                preferredName = "VibeCast-${Build.MODEL ?: "Android"}",
                 port = port,
                 onFailure = { message ->
                     ServerRuntime.update { it.copy(warning = message) }
                 },
             )
-            publisher.start()
+            // mDNS — удобство, а не условие работы сервера. Если регистрация
+            // упала, телефон всё равно доступен по URL и токену.
+            runCatching { publisher.start() }.onFailure { error ->
+                Log.w(TAG, "mDNS: запуск не удался: ${error.javaClass.simpleName}")
+                ServerRuntime.update {
+                    it.copy(warning = "mDNS недоступен — подключитесь по URL вручную")
+                }
+            }
             nsdPublisher = publisher
             registerMediaObserver()
 

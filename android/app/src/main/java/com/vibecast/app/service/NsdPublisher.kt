@@ -12,7 +12,7 @@ import com.vibecast.shared.HealthDto
  */
 class NsdPublisher(
     context: Context,
-    private val serviceName: String,
+    private val preferredName: String,
     private val port: Int,
     private val onFailure: (String) -> Unit,
 ) {
@@ -28,7 +28,9 @@ class NsdPublisher(
             return
         }
         val info = NsdServiceInfo().apply {
-            serviceName = serviceName.take(60)
+            // Нельзя читать serviceName у самого NsdServiceInfo: до присваивания
+            // платформенное поле равно null (был краш getServiceName(...) must not be null).
+            serviceName = preferredName.trim().ifEmpty { "VibeCast" }.take(60)
             serviceType = SERVICE_TYPE
             setPort(port)
             setAttribute("version", HealthDto.PROTOCOL_VERSION.toString())
@@ -38,7 +40,7 @@ class NsdPublisher(
         val registration = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) {
                 registered = true
-                Log.i(TAG, "mDNS: опубликован ${info.serviceName}")
+                Log.i(TAG, "mDNS: опубликован ${info.serviceName ?: "(без имени)"}")
             }
 
             override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
