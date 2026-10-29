@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VibeCast</string>
+    <string name="notification_channel_name">Раздача библиотеки</string>
+    <string name="notification_channel_description">VibeCast работает в фоне и отдаёт музыку на ПК</string>
+    <string name="notification_title">VibeCast раздаёт библиотеку</string>
+</resources>
