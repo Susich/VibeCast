@@ -1,0 +1,655 @@
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use serde_json::{json, Map, Value};
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::sync::{mpsc, Mutex as AsyncMutex};
+
+use crate::models::{PlayerState, Track};
+
+trait IpcStream: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send + 'static> IpcStream for T {}
+
+struct Connection {
+    tx: mpsc::UnboundedSender<Value>,
+    child: Child,
+    #[cfg_attr(windows, allow(dead_code))]
+    socket: String,
+}
+
+pub struct PlayerHandle {
+    app: AppHandle,
+    conn: AsyncMutex<Option<Connection>>,
+    state: Arc<Mutex<PlayerState>>,
+    last_emit: Arc<Mutex<Instant>>,
+    eof_for: Arc<Mutex<Option<String>>>,
+    volume: Arc<Mutex<f64>>,
+    mpv_path: Arc<Mutex<Option<String>>>,
+    request_id: AtomicU64,
+}
+
+impl PlayerHandle {
+    pub fn new(app: AppHandle, volume: f64, mpv_path: Option<String>) -> Self {
+        let volume = volume.clamp(0.0, 100.0);
+        let mut state = PlayerState::default();
+        state.volume = volume;
+        Self {
+            app,
+            conn: AsyncMutex::new(None),
+            state: Arc::new(Mutex::new(state)),
+            last_emit: Arc::new(Mutex::new(Instant::now() - Duration::from_secs(1))),
+            eof_for: Arc::new(Mutex::new(None)),
+            volume: Arc::new(Mutex::new(volume)),
+            mpv_path: Arc::new(Mutex::new(mpv_path)),
+            request_id: AtomicU64::new(1),
+        }
+    }
+
+    pub fn state(&self) -> PlayerState {
+        self.state
+            .lock()
+            .map(|state| state.clone())
+            .unwrap_or_default()
+    }
+
+    pub async fn set_mpv_path(&self, path: Option<String>) {
+        *self
+            .mpv_path
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = path;
+        self.kill_connection().await;
+    }
+
+    pub async fn play(
+        &self,
+        track: &Track,
+        uri: &str,
+        remote: bool,
+        token: Option<&str>,
+        start: f64,
+    ) -> Result<(), String> {
+        if remote && token.is_none() {
+            return Err("Нет токена для потокового воспроизведения".to_string());
+        }
+
+        self.ensure_started().await?;
+
+        {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| "Состояние плеера недоступно".to_string())?;
+            state.current_track_id = Some(track.id.clone());
+            state.title = Some(track.title.clone());
+            state.artist = Some(track.artist.clone());
+            state.album = Some(track.album.clone());
+            state.position = start.max(0.0);
+            state.duration = (track.duration_ms.max(0) as f64) / 1000.0;
+            state.paused = false;
+            state.loading = true;
+            state.buffering = false;
+            state.error = None;
+            state.source = Some(if remote { "stream" } else { "cache" }.to_string());
+        }
+        if let Ok(mut eof) = self.eof_for.lock() {
+            *eof = None;
+        }
+
+        let mut options = Map::new();
+        if remote {
+            options.insert(
+                "http-header-fields".to_string(),
+                json!(format!(
+                    "Authorization: Bearer {}",
+                    token.unwrap_or_default()
+                )),
+            );
+        }
+        if start > 0.01 {
+            options.insert("start".to_string(), json!(format!("{start:.3}")));
+        }
+
+        let command = json!({
+            "command": ["loadfile", uri, "replace", -1, options],
+            "request_id": self.request_id.fetch_add(1, Ordering::Relaxed),
+        });
+        self.send(command).await?;
+
+        self.emit_state(true);
+        Ok(())
+    }
+
+    pub async fn stop(&self) {
+        self.send_optional(json!({ "command": ["stop"] })).await;
+        if let Ok(mut state) = self.state.lock() {
+            let volume = state.volume;
+            *state = PlayerState {
+                volume,
+                ..Default::default()
+            };
+        }
+        if let Ok(mut eof) = self.eof_for.lock() {
+            *eof = None;
+        }
+        self.emit_state(true);
+    }
+
+    pub async fn set_pause(&self, paused: bool) {
+        if let Ok(mut state) = self.state.lock() {
+            if state.current_track_id.is_none() {
+                return;
+            }
+            state.paused = paused;
+        }
+        self.send_optional(json!({ "command": ["set_property", "pause", paused] }))
+            .await;
+        self.emit_state(true);
+    }
+
+    pub async fn toggle_pause(&self) {
+        let paused = self.state.lock().map(|state| state.paused).unwrap_or(false);
+        self.set_pause(!paused).await;
+    }
+
+    pub async fn seek(&self, position: f64) {
+        let position = position.max(0.0);
+        if let Ok(mut state) = self.state.lock() {
+            if state.current_track_id.is_none() {
+                return;
+            }
+            state.position = position;
+        }
+        self.send_optional(json!({
+            "command": ["seek", position, "absolute+exact"]
+        }))
+        .await;
+        self.emit_state(true);
+    }
+
+    pub async fn set_volume(&self, volume: f64) {
+        let volume = volume.clamp(0.0, 100.0);
+        if let Ok(mut state) = self.state.lock() {
+            state.volume = volume;
+        }
+        if let Ok(mut stored) = self.volume.lock() {
+            *stored = volume;
+        }
+        self.send_optional(json!({
+            "command": ["set_property", "volume", volume]
+        }))
+        .await;
+        self.emit_state(true);
+    }
+
+    pub async fn shutdown(&self) {
+        let mut guard = self.conn.lock().await;
+        if let Some(mut conn) = guard.take() {
+            let _ = conn.tx.send(json!({ "command": ["quit"] }));
+            let _ = conn.child.kill();
+            let _ = conn.child.wait();
+            #[cfg(unix)]
+            let _ = std::fs::remove_file(&conn.socket);
+        }
+    }
+
+    async fn kill_connection(&self) {
+        let mut guard = self.conn.lock().await;
+        if let Some(mut conn) = guard.take() {
+            let _ = conn.child.kill();
+            let _ = conn.child.wait();
+            #[cfg(unix)]
+            let _ = std::fs::remove_file(&conn.socket);
+        }
+    }
+
+    async fn send(&self, value: Value) -> Result<(), String> {
+        let guard = self.conn.lock().await;
+        match guard.as_ref() {
+            Some(conn) => conn
+                .tx
+                .send(value)
+                .map_err(|_| "mpv IPC закрыт".to_string()),
+            None => Err("mpv не запущен".to_string()),
+        }
+    }
+
+    async fn send_optional(&self, value: Value) {
+        let guard = self.conn.lock().await;
+        if let Some(conn) = guard.as_ref() {
+            let _ = conn.tx.send(value);
+        }
+    }
+
+    async fn ensure_started(&self) -> Result<(), String> {
+        let mut guard = self.conn.lock().await;
+        if guard.is_some() {
+            return Ok(());
+        }
+
+        let configured = self
+            .mpv_path
+            .lock()
+            .map(|path| path.clone())
+            .unwrap_or(None);
+        let mpv = find_mpv(&self.app, configured).ok_or_else(|| {
+            "mpv не найден. Установите mpv и укажите путь к mpv.exe в настройках VibeCast."
+                .to_string()
+        })?;
+
+        let socket = socket_path();
+        #[cfg(unix)]
+        {
+            let _ = std::fs::remove_file(&socket);
+        }
+
+        let volume = self.volume.lock().map(|volume| *volume).unwrap_or(80.0);
+        let mut command = Command::new(&mpv);
+        command.args([
+            "--idle=yes",
+            "--no-video",
+            "--gapless-audio=yes",
+            "--audio-buffer=0.3",
+            "--no-terminal",
+            "--force-window=no",
+            "--keep-open=no",
+            "--user-agent=VibeCast/0.1",
+            "--msg-level=all=warn",
+        ]);
+        command.arg(format!("--input-ipc-server={socket}"));
+        command.arg(format!("--volume={volume:.0}"));
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let mut child = command
+            .spawn()
+            .map_err(|err| format!("Не удалось запустить mpv ({mpv}): {err}"))?;
+
+        let mut connected = None;
+        let mut last_error = None;
+        for _ in 0..60 {
+            if let Ok(Some(status)) = child.try_wait() {
+                return Err(format!(
+                    "mpv завершился сразу после запуска ({status}). Проверьте установку mpv."
+                ));
+            }
+            match connect_ipc(&socket).await {
+                Ok(stream) => {
+                    connected = Some(stream);
+                    break;
+                }
+                Err(err) => {
+                    last_error = Some(err.to_string());
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            }
+        }
+
+        let stream = match connected {
+            Some(stream) => stream,
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "mpv не открыл IPC-канал: {}",
+                    last_error.unwrap_or_else(|| "таймаут".to_string())
+                ));
+            }
+        };
+
+        let (reader, mut writer) = tokio::io::split(stream);
+        let (tx, mut rx) = mpsc::unbounded_channel::<Value>();
+
+        tokio::spawn(async move {
+            while let Some(value) = rx.recv().await {
+                let mut line = value.to_string();
+                line.push('\n');
+                if writer.write_all(line.as_bytes()).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let state = self.state.clone();
+        let app = self.app.clone();
+        let last_emit = self.last_emit.clone();
+        let eof_for = self.eof_for.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(reader).lines();
+            loop {
+                match lines.next_line().await {
+                    Ok(Some(line)) => handle_line(&app, &state, &last_emit, &eof_for, &line),
+                    Ok(None) => break,
+                    Err(_) => break,
+                }
+            }
+        });
+
+        for (id, property) in [
+            (1, "time-pos"),
+            (2, "duration"),
+            (3, "pause"),
+            (4, "volume"),
+            (5, "eof-reached"),
+            (6, "paused-for-cache"),
+            (7, "media-title"),
+        ] {
+            let _ = tx.send(json!({
+                "command": ["observe_property", id, property]
+            }));
+        }
+
+        log::info!("mpv started ({mpv})");
+        *guard = Some(Connection { tx, child, socket });
+        Ok(())
+    }
+
+    fn emit_state(&self, force: bool) {
+        emit_state(&self.app, &self.state, &self.last_emit, force);
+    }
+}
+
+fn emit_state(
+    app: &AppHandle,
+    state: &Arc<Mutex<PlayerState>>,
+    last_emit: &Arc<Mutex<Instant>>,
+    force: bool,
+) {
+    if !force {
+        let last = match last_emit.lock() {
+            Ok(last) => *last,
+            Err(_) => return,
+        };
+        if last.elapsed() < Duration::from_millis(250) {
+            return;
+        }
+    }
+    if let Ok(mut last) = last_emit.lock() {
+        *last = Instant::now();
+    }
+    let snapshot = match state.lock() {
+        Ok(state) => state.clone(),
+        Err(_) => return,
+    };
+    let _ = app.emit("player://state", snapshot);
+}
+
+fn handle_line(
+    app: &AppHandle,
+    state: &Arc<Mutex<PlayerState>>,
+    last_emit: &Arc<Mutex<Instant>>,
+    eof_for: &Arc<Mutex<Option<String>>>,
+    line: &str,
+) {
+    let Ok(value) = serde_json::from_str::<Value>(line) else {
+        return;
+    };
+
+    if let Some(event) = value.get("event").and_then(Value::as_str) {
+        if event == "end-file" {
+            let reason = value.get("reason").and_then(Value::as_str).unwrap_or("");
+            let failed = reason == "error";
+            let ended = reason == "eof";
+            if failed || ended {
+                let mut eof_id = None;
+                if let Ok(mut player) = state.lock() {
+                    player.loading = false;
+                    player.buffering = false;
+                    if failed {
+                        player.paused = true;
+                        player.error = Some(
+                            "Не удалось открыть трек. Телефон недоступен или файл удалён."
+                                .to_string(),
+                        );
+                    } else {
+                        player.position = player.duration;
+                        player.paused = true;
+                        if let Some(id) = player.current_track_id.clone() {
+                            if let Ok(mut last_eof) = eof_for.lock() {
+                                if last_eof.as_deref() != Some(id.as_str()) {
+                                    *last_eof = Some(id.clone());
+                                    eof_id = Some(id);
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Some(track_id) = eof_id {
+                    let _ = app.emit("player://eof", json!({ "trackId": track_id }));
+                }
+                emit_state(app, state, last_emit, true);
+            }
+            return;
+        }
+        if event != "property-change" {
+            return;
+        }
+        let Some(name) = value.get("name").and_then(Value::as_str) else {
+            return;
+        };
+        let data = value.get("data");
+        let mut force = false;
+        let mut eof_id = None;
+
+        if let Ok(mut player) = state.lock() {
+            match name {
+                "time-pos" => {
+                    if let Some(position) = data.and_then(Value::as_f64) {
+                        player.position = position.max(0.0);
+                        player.loading = false;
+                    }
+                }
+                "duration" => {
+                    if let Some(duration) = data.and_then(Value::as_f64) {
+                        if duration > 0.0 {
+                            player.duration = duration;
+                        }
+                        force = true;
+                    }
+                }
+                "pause" => {
+                    if let Some(paused) = data.and_then(Value::as_bool) {
+                        player.paused = paused;
+                        player.loading = false;
+                        force = true;
+                    }
+                }
+                "volume" => {
+                    if let Some(volume) = data.and_then(Value::as_f64) {
+                        player.volume = volume.clamp(0.0, 100.0);
+                        force = true;
+                    }
+                }
+                "paused-for-cache" => {
+                    player.buffering = data.and_then(Value::as_bool).unwrap_or(false);
+                    force = true;
+                }
+                "eof-reached" => {
+                    let reached = data.and_then(Value::as_bool).unwrap_or(false);
+                    if reached {
+                        player.loading = false;
+                        player.buffering = false;
+                        player.paused = true;
+                        if let Some(id) = player.current_track_id.clone() {
+                            if let Ok(mut last_eof) = eof_for.lock() {
+                                if last_eof.as_deref() != Some(id.as_str()) {
+                                    *last_eof = Some(id.clone());
+                                    eof_id = Some(id);
+                                }
+                            }
+                        }
+                    } else if let Ok(mut last_eof) = eof_for.lock() {
+                        *last_eof = None;
+                    }
+                    force = true;
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(track_id) = eof_id {
+            let _ = app.emit("player://eof", json!({ "trackId": track_id }));
+        }
+        emit_state(app, state, last_emit, force);
+        return;
+    }
+
+    if let Some(error) = value.get("error").and_then(Value::as_str) {
+        if error == "success" {
+            return;
+        }
+        let lower = error.to_lowercase();
+        if lower.contains("loading failed")
+            || lower.contains("failed to open")
+            || lower.contains("error opening")
+        {
+            if let Ok(mut player) = state.lock() {
+                player.loading = false;
+                player.buffering = false;
+                player.error = Some(format!("mpv: {error}"));
+            }
+            emit_state(app, state, last_emit, true);
+        }
+    }
+}
+
+fn find_mpv(app: &AppHandle, configured: Option<String>) -> Option<String> {
+    if let Some(path) = configured {
+        let path = path.trim().to_string();
+        if !path.is_empty() {
+            return Some(path);
+        }
+    }
+    if let Ok(path) = std::env::var("VIBECAST_MPV") {
+        if !path.trim().is_empty() {
+            return Some(path);
+        }
+    }
+    if let Ok(resources) = app.path().resource_dir() {
+        for candidate in [
+            "mpv.exe",
+            "mpv",
+            "binaries/mpv.exe",
+            "binaries/mpv",
+            "mpv/mpv.exe",
+            "mpv/mpv",
+        ] {
+            let path = resources.join(candidate);
+            if path.is_file() {
+                return Some(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    if let Some(path) = find_in_path("mpv") {
+        return Some(path);
+    }
+    for candidate in common_mpv_paths() {
+        if std::path::Path::new(&candidate).is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn find_in_path(name: &str) -> Option<String> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        for file in [name.to_string(), format!("{name}.exe")] {
+            let candidate = dir.join(file);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
+
+fn common_mpv_paths() -> Vec<String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut paths = vec![
+            r"C:\Program Files\mpv\mpv.exe".to_string(),
+            r"C:\Program Files\MPV Player\mpv.exe".to_string(),
+            r"C:\Program Files (x86)\mpv\mpv.exe".to_string(),
+            r"C:\Program Files (x86)\MPV Player\mpv.exe".to_string(),
+            r"C:\Program Files\mpv\mpv.com".to_string(),
+        ];
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            paths.push(
+                std::path::PathBuf::from(local)
+                    .join("Programs")
+                    .join("mpv")
+                    .join("mpv.exe")
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        }
+        paths
+    }
+    #[cfg(target_os = "macos")]
+    {
+        vec![
+            "/opt/homebrew/bin/mpv".to_string(),
+            "/usr/local/bin/mpv".to_string(),
+            "/Applications/mpv.app/Contents/MacOS/mpv".to_string(),
+        ]
+    }
+    #[cfg(target_os = "linux")]
+    {
+        vec![
+            "/usr/bin/mpv".to_string(),
+            "/usr/local/bin/mpv".to_string(),
+            "/snap/bin/mpv".to_string(),
+        ]
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        Vec::new()
+    }
+}
+
+fn socket_path() -> String {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    #[cfg(windows)]
+    {
+        format!(r"\\.\pipe\vibecast-mpv-{}-{}", std::process::id(), stamp)
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::temp_dir()
+            .join(format!(
+                "vibecast-mpv-{}-{}.sock",
+                std::process::id(),
+                stamp
+            ))
+            .to_string_lossy()
+            .to_string()
+    }
+}
+
+#[cfg(windows)]
+async fn connect_ipc(path: &str) -> std::io::Result<Box<dyn IpcStream>> {
+    use tokio::net::windows::named_pipe::ClientOptions;
+    let client = ClientOptions::new().open(path)?;
+    Ok(Box::new(client))
+}
+
+#[cfg(unix)]
+async fn connect_ipc(path: &str) -> std::io::Result<Box<dyn IpcStream>> {
+    let stream = tokio::net::UnixStream::connect(path).await?;
+    Ok(Box::new(stream))
+}
