@@ -30,7 +30,7 @@ Range, обложки, SSE). Windows/Linux/macOS-клиент на Tauri нах�
 | 2 | Android: каталог | MediaStore-сканер, стабильные id, маппинг, юнит-тесты | 2 ч | done |
 | 3 | Android: HTTP | Ktor CIO, `/health`, `/library`, Bearer, интеграционные тесты | 2 ч | done |
 | 4 | Android: медиа | `/audio` c Range, `/cover`, `/events`, curl/тесты | 2 ч | done |
-| 5 | Android: сервис/UI | FGS, mDNS, QR, Compose, Wakelock | 2.5 ч | done (APK собран; запуск на устройстве не проверен) |
+| 5 | Android: сервис/UI | FGS, mDNS, токен, Compose, Wakelock | 2.5 ч | done (APK собран; запуск на устройстве не проверен) |
 | 6 | Desktop: каркас | Tauri 2, React, mDNS, ручное подключение, SQLite, UI-список | 5 ч | done |
 | 7 | Desktop: mpv | IPC, play/pause/seek/volume, прогресс, eof | 3 ч | done |
 | 8 | Desktop: кэш | Скачивание, resume, offline-режим, индикация | 2 ч | done |
