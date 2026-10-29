@@ -40,7 +40,7 @@ function TrackRowItem({
   return (
     <div
       className={`track-row ${active ? "active" : ""}`}
-      onDoubleClick={onPlay}
+      onClick={onPlay}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
           event.preventDefault();
@@ -49,7 +49,7 @@ function TrackRowItem({
       }}
       tabIndex={0}
       role="row"
-      aria-label={`${track.title} — ${track.artist}`}
+      aria-label={`Воспроизвести ${track.title} — ${track.artist}`}
     >
       <div className="track-index">
         {active ? (

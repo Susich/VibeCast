@@ -51,7 +51,7 @@ export function QueuePanel() {
           <div className="queue-panel-empty">
             <ListMusicIcon size={30} />
             <h3>Очередь пуста</h3>
-            <p>Дважды щёлкните любой трек — он и следующие из списка попадут сюда.</p>
+            <p>Щёлкните любой трек — он и следующие из списка попадут сюда.</p>
           </div>
         ) : (
           <div className="queue-scroll" ref={parentRef}>

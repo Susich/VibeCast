@@ -229,7 +229,7 @@ export function Sidebar() {
               <div className="queue-empty">
                 <QueueIcon size={25} />
                 <span>Очередь пуста</span>
-                <small>Дважды щёлкните трек, чтобы начать</small>
+                <small>Щёлкните трек, чтобы начать</small>
               </div>
             )}
           </div>
