@@ -5,14 +5,12 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -50,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -60,9 +57,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
 import com.vibecast.app.service.ServerRuntime
 import com.vibecast.app.service.ServerService
 import com.vibecast.app.ui.theme.VibeAmber
@@ -74,6 +68,7 @@ import com.vibecast.app.ui.theme.VibeSurface
 import com.vibecast.app.ui.theme.VibeSurfaceHigh
 import com.vibecast.app.ui.theme.VibeText
 import com.vibecast.shared.ConnectionUrl
+import kotlinx.coroutines.delay
 
 @Composable
 fun VibeCastRoot() {
@@ -258,7 +253,7 @@ private fun StatusScreen(
 
         if (state.running && state.ip != null) {
             Spacer(Modifier.height(16.dp))
-            QrCard(state)
+            ConnectionCard(state)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -323,8 +318,9 @@ private fun StatusScreen(
                 Text("Подключение с ПК", color = VibeText, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "В приложении VibeCast на ПК выберите телефон из списка или введите адрес " +
-                        "и токен вручную. QR-код содержит всё необходимое.",
+                    "В приложении VibeCast на ПК выберите телефон из списка — он находится " +
+                        "по mDNS в той же Wi-Fi сети. Для первого подключения введите токен " +
+                        "или вставьте ссылку, скопированную на телефоне.",
                     color = VibeMuted,
                     fontSize = 13.sp,
                 )
@@ -433,42 +429,84 @@ private fun TextButtonText(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun QrCard(state: ServerRuntime.State) {
+private fun ConnectionCard(state: ServerRuntime.State) {
     val ip = state.ip ?: return
-    val url = remember(ip, state.port, state.token) {
+    val address = "http://$ip:${state.port}"
+    val link = remember(ip, state.port, state.token) {
         ConnectionUrl.build(ip, state.port, state.token)
     }
-    val bitmap = remember(url) { generateQrBitmap(url, 640) }
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1_500)
+            copied = false
+        }
+    }
+
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = VibeSurface),
+        shape = RoundedCornerShape(20.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "QR-код для подключения",
-                    modifier = Modifier.size(230.dp),
-                )
-            } else {
-                Text("Не удалось построить QR-код", color = Color.Black)
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(VibeGreen.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("⇄", color = VibeGreen, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Подключение с ПК", color = VibeText, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Компьютер найдёт телефон сам по mDNS",
+                        color = VibeMuted,
+                        fontSize = 12.sp,
+                    )
+                }
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(14.dp))
+            Text("Адрес", color = VibeMuted, fontSize = 11.sp)
+            Spacer(Modifier.height(5.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    address,
+                    color = VibeText,
+                    fontSize = 14.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButtonText("Копировать") {
+                    clipboard.setText(AnnotatedString(address))
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = {
+                    clipboard.setText(AnnotatedString(link))
+                    copied = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = VibeGreen),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+            ) {
+                Text(
+                    if (copied) "Ссылка скопирована" else "Копировать ссылку с токеном",
+                    color = Color(0xFF06210F),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(7.dp))
             Text(
-                "Отсканируйте QR в VibeCast на ПК",
-                color = Color(0xFF0B0F14),
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "http://$ip:${state.port}",
-                color = Color(0xFF475569),
-                fontSize = 12.sp,
+                "Вставьте ссылку в поле «Адрес телефона» на ПК — токен подхватится сам. " +
+                    "Это быстрее, чем вводить токен вручную.",
+                color = VibeMuted,
+                fontSize = 11.sp,
             )
         }
     }
@@ -488,28 +526,6 @@ private fun Banner(text: String, color: Color, modifier: Modifier = Modifier) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(color).align(Alignment.CenterVertically))
         Spacer(Modifier.width(10.dp))
         Text(text, color = VibeText, fontSize = 13.sp)
-    }
-}
-
-private fun generateQrBitmap(content: String, size: Int): Bitmap? {
-    return try {
-        val matrix = QRCodeWriter().encode(
-            content,
-            BarcodeFormat.QR_CODE,
-            size,
-            size,
-            mapOf(EncodeHintType.MARGIN to 1),
-        )
-        val pixels = IntArray(size * size)
-        for (y in 0 until size) {
-            val row = y * size
-            for (x in 0 until size) {
-                pixels[row + x] = if (matrix.get(x, y)) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
-            }
-        }
-        Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
-    } catch (_: Throwable) {
-        null
     }
 }
 

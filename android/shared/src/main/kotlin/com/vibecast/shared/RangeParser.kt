@@ -70,7 +70,7 @@ object BearerAuth {
     }
 }
 
-/** Формирование и разбор URL подключения из QR. */
+/** Формирование и разбор URL подключения. */
 object ConnectionUrl {
 
     fun build(host: String, port: Int, token: String): String =

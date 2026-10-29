@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.database.ContentObserver
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
@@ -66,6 +68,10 @@ class ServerService : Service() {
     private var rescanJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var mdnsJob: Job? = null
+    private var mdnsPort: Int? = null
     private var started = false
     private var stopped = false
 
@@ -123,6 +129,7 @@ class ServerService : Service() {
         }
 
         acquireLocks()
+        startNetworkMonitor()
         val token = tokenStore.token()
         ServerRuntime.update {
             it.copy(
@@ -180,23 +187,8 @@ class ServerService : Service() {
             server = engine
 
             val ip = localIpAddress()
-            val publisher = NsdPublisher(
-                context = applicationContext,
-                preferredName = "VibeCast-${Build.MODEL ?: "Android"}",
-                port = port,
-                onFailure = { message ->
-                    ServerRuntime.update { it.copy(warning = message) }
-                },
-            )
-            // mDNS — удобство, а не условие работы сервера. Если регистрация
-            // упала, телефон всё равно доступен по URL и токену.
-            runCatching { publisher.start() }.onFailure { error ->
-                Log.w(TAG, "mDNS: запуск не удался: ${error.javaClass.simpleName}")
-                ServerRuntime.update {
-                    it.copy(warning = "mDNS недоступен — подключитесь по URL вручную")
-                }
-            }
-            nsdPublisher = publisher
+            mdnsPort = port
+            publishMdns(port)
             registerMediaObserver()
 
             ServerRuntime.update {
@@ -229,6 +221,8 @@ class ServerService : Service() {
     private fun fail(message: String) {
         runCatching { server?.stop(200, 800) }
         server = null
+        mdnsPort = null
+        mdnsJob?.cancel()
         nsdPublisher?.stop()
         nsdPublisher = null
         ServerRuntime.update {
@@ -240,6 +234,78 @@ class ServerService : Service() {
             )
         }
         updateNotification()
+    }
+
+    private fun publishMdns(port: Int) {
+        nsdPublisher?.stop()
+        val publisher = NsdPublisher(
+            context = applicationContext,
+            preferredName = "VibeCast-${Build.MODEL ?: "Android"}",
+            port = port,
+            onFailure = { message ->
+                ServerRuntime.update { it.copy(warning = message) }
+            },
+            onRegistered = {
+                ServerRuntime.update { state ->
+                    if (state.warning?.startsWith("mDNS") == true) {
+                        state.copy(warning = null)
+                    } else {
+                        state
+                    }
+                }
+            },
+        )
+        // mDNS — удобство, а не условие работы сервера. Если регистрация
+        // упала, телефон всё равно доступен по URL и токену.
+        runCatching { publisher.start() }.onFailure { error ->
+            Log.w(TAG, "mDNS: запуск не удался: ${error.javaClass.simpleName}")
+            ServerRuntime.update {
+                it.copy(warning = "mDNS недоступен — подключитесь по URL вручную")
+            }
+        }
+        nsdPublisher = publisher
+    }
+
+    /**
+     * Перерегистрирует mDNS при смене сети. Это лечит типовой случай, когда
+     * сервис стартовал до подключения к Wi-Fi или телефон переключился между
+     * сетями: NsdManager сам объявление не переносит.
+     */
+    private fun scheduleMdnsRefresh() {
+        val port = mdnsPort ?: return
+        mdnsJob?.cancel()
+        mdnsJob = scope.launch {
+            delay(1_200)
+            if (started) publishMdns(port)
+        }
+    }
+
+    private fun startNetworkMonitor() {
+        if (networkCallback != null) return
+        val manager = getSystemService(ConnectivityManager::class.java) ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                scheduleMdnsRefresh()
+            }
+
+            override fun onLost(network: Network) {
+                scheduleMdnsRefresh()
+            }
+        }
+        runCatching { manager.registerDefaultNetworkCallback(callback) }
+            .onFailure { Log.w(TAG, "Сетевой монитор не зарегистрирован") }
+        networkCallback = callback
+    }
+
+    private fun stopNetworkMonitor() {
+        val manager = getSystemService(ConnectivityManager::class.java)
+        val callback = networkCallback
+        networkCallback = null
+        if (manager != null && callback != null) {
+            runCatching { manager.unregisterNetworkCallback(callback) }
+        }
+        mdnsJob?.cancel()
+        mdnsJob = null
     }
 
     private fun scheduleRescan(delayMs: Long = 1_500) {
@@ -303,6 +369,8 @@ class ServerService : Service() {
         rescanJob?.cancel()
         runCatching { server?.stop(300, 1_200) }
         server = null
+        mdnsPort = null
+        stopNetworkMonitor()
         nsdPublisher?.stop()
         nsdPublisher = null
         contentObserver?.let { observer ->
@@ -327,6 +395,9 @@ class ServerService : Service() {
                 setReferenceCounted(false)
                 acquire()
             }
+        }.onFailure { Log.w(TAG, "Не удалось взять WakeLock") }
+
+        runCatching {
             val wifi = applicationContext.getSystemService(WifiManager::class.java)
             wifiLock = wifi.createWifiLock(
                 WifiManager.WIFI_MODE_FULL_HIGH_PERF,
@@ -335,14 +406,26 @@ class ServerService : Service() {
                 setReferenceCounted(false)
                 acquire()
             }
-        }.onFailure { Log.w(TAG, "Не удалось взять WakeLock/WifiLock") }
+        }.onFailure { Log.w(TAG, "Не удалось взять WifiLock") }
+
+        // Отдельная попытка: без MulticastLock NsdManager может не видеть
+        // multicast-трафик, даже если остальные блокировки взяты.
+        runCatching {
+            val wifi = applicationContext.getSystemService(WifiManager::class.java)
+            multicastLock = wifi.createMulticastLock("VibeCast::Mdns").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }.onFailure { Log.w(TAG, "Не удалось взять MulticastLock") }
     }
 
     private fun releaseLocks() {
         runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
         runCatching { wifiLock?.takeIf { it.isHeld }?.release() }
+        runCatching { multicastLock?.takeIf { it.isHeld }?.release() }
         wakeLock = null
         wifiLock = null
+        multicastLock = null
     }
 
     private fun findAvailablePort(preferred: Int): Int {

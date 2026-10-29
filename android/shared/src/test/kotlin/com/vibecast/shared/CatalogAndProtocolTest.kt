@@ -135,7 +135,7 @@ class AuthAndUrlTest {
     }
 
     @Test
-    fun `qr url roundtrip`() {
+    fun `connection url roundtrip`() {
         val url = ConnectionUrl.build("192.168.1.5", 8765, "abc")
         assertEquals("http://192.168.1.5:8765/#token=abc", url)
         val parsed = ConnectionUrl.parse(url)!!
