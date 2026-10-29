@@ -5,10 +5,18 @@ import { errorText } from "../lib/format";
 import { useStore } from "../store";
 import { CheckIcon, LinkIcon, RadioIcon, SmartphoneIcon, SpinnerIcon, XIcon } from "./Icons";
 
+function sameDevice(savedName: string, discoveredName: string): boolean {
+  const saved = savedName.trim().toLowerCase();
+  const found = discoveredName.trim().toLowerCase();
+  if (!saved || !found) return false;
+  return saved === found || saved.includes(found) || found.includes(saved);
+}
+
 export function ConnectModal() {
   const open = useStore((state) => state.connectOpen);
   const close = useStore((state) => state.closeConnect);
   const connect = useStore((state) => state.connect);
+  const connectSaved = useStore((state) => state.connectSaved);
   const connecting = useStore((state) => state.connecting);
   const connectError = useStore((state) => state.connectError);
   const devices = useStore((state) => state.devices);
@@ -93,6 +101,16 @@ export function ConnectModal() {
                     key={device.id}
                     className={`device-card ${server?.baseUrl === device.baseUrl ? "current" : ""}`}
                     onClick={() => {
+                      if (server?.online && server.baseUrl === device.baseUrl) {
+                        close();
+                        return;
+                      }
+                      const alreadyPaired =
+                        server?.hasToken && sameDevice(server.deviceName, device.name);
+                      if (alreadyPaired) {
+                        void connectSaved(device.baseUrl);
+                        return;
+                      }
                       setUrl(device.baseUrl);
                       setToken("");
                       setLocalError(null);
@@ -151,7 +169,7 @@ export function ConnectModal() {
                   autoComplete="off"
                 />
               </div>
-              <small>Можно вставить ссылку из QR-кода целиком — токен подхватится сам.</small>
+              <small>Можно вставить ссылку с телефона целиком — токен подхватится сам.</small>
             </label>
 
             <label className="field">
@@ -175,7 +193,7 @@ export function ConnectModal() {
                   {reveal ? "скрыть" : "показать"}
                 </button>
               </div>
-              <small>Показан на телефоне под QR-кодом. Никогда не передаётся по сети открыто.</small>
+              <small>Показан на телефоне в карточке подключения. Передаётся только в заголовке Authorization.</small>
             </label>
 
             {(localError || connectError) && (

@@ -86,6 +86,7 @@ interface Store {
   openSettings: () => void;
   closeSettings: () => void;
   connect: (url: string, token: string) => Promise<void>;
+  connectSaved: (url: string, silent?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
   updateMpvPath: (path: string) => Promise<void>;
   clearCache: () => Promise<void>;
@@ -107,6 +108,30 @@ let toastCounter = 0;
 
 function updateRows(rows: TrackRow[], trackId: string, cached: boolean): TrackRow[] {
   return rows.map((row) => (row.id === trackId ? { ...row, cached } : row));
+}
+
+function sameDeviceName(saved: string, discovered: string): boolean {
+  const a = saved.trim().toLowerCase();
+  const b = discovered.trim().toLowerCase();
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+let autoConnectAttempted = new Set<string>();
+
+function pickReconnect(
+  server: ServerView | null,
+  devices: Device[],
+): Device | null {
+  if (!server || server.online || !server.hasToken) return null;
+  return (
+    devices.find(
+      (device) =>
+        sameDeviceName(server.deviceName, device.name) &&
+        device.baseUrl !== server.baseUrl &&
+        !autoConnectAttempted.has(device.baseUrl),
+    ) ?? null
+  );
 }
 
 export const useStore = create<Store>()((set, get) => ({
@@ -160,6 +185,11 @@ export const useStore = create<Store>()((set, get) => ({
         booted: true,
       });
       await Promise.all([get().refreshLibrary(), get().refreshFacets()]);
+      const candidate = pickReconnect(get().server, get().devices);
+      if (candidate) {
+        autoConnectAttempted.add(candidate.baseUrl);
+        void get().connectSaved(candidate.baseUrl, true);
+      }
     } catch (error) {
       set({ bootError: errorText(error), booted: true });
     } finally {
@@ -419,6 +449,39 @@ export const useStore = create<Store>()((set, get) => ({
     }
   },
 
+  async connectSaved(url, silent = false) {
+    set({ connecting: true, connectError: null });
+    try {
+      const server = await call<ServerView>("connect_saved", { url: url.trim() });
+      set({
+        server,
+        connecting: false,
+        connectOpen: false,
+        covers: {},
+        coverLoading: {},
+        progress: {},
+        stats: {
+          ...get().stats,
+          version: server.version,
+          tracks: server.trackCount,
+        },
+      });
+      get().addToast(`Подключено: ${server.deviceName}`, "success");
+      await Promise.all([get().refreshLibrary(), get().refreshFacets()]);
+      try {
+        const cache = await call<CacheStats>("cache_stats");
+        set({ cachedCount: cache.count });
+      } catch {
+        /* cache stats are informational */
+      }
+    } catch (error) {
+      set({ connecting: false, connectError: errorText(error) });
+      if (silent) {
+        get().addToast(errorText(error), "error");
+      }
+    }
+  },
+
   async disconnect() {
     try {
       await call("disconnect");
@@ -503,19 +566,41 @@ export const useStore = create<Store>()((set, get) => ({
     const previous = get().server;
     set({ server });
     if (!server) {
+      autoConnectAttempted.clear();
       set({ covers: {}, coverLoading: {} });
       return;
     }
-    if (previous?.online && !server.online) {
-      get().addToast("Телефон недоступен — играет кэш", "error");
+    if (server.online) {
+      autoConnectAttempted.clear();
     }
     if (!previous || previous.baseUrl !== server.baseUrl) {
       set({ covers: {}, coverLoading: {} });
+    }
+    if (server.online) return;
+    const state = get();
+    if (state.connecting) return;
+    // Discovery may report the phone before SSE notices that the old address
+    // died. Retry on the offline transition as well, otherwise that ordering
+    // loses the automatic reconnect.
+    const candidate = pickReconnect(server, state.devices);
+    if (candidate) {
+      autoConnectAttempted.add(candidate.baseUrl);
+      void state.connectSaved(candidate.baseUrl, true);
+      return;
+    }
+    if (previous?.online) {
+      get().addToast("Телефон недоступен — играет кэш", "error");
     }
   },
 
   onDevices(devices) {
     set({ devices });
+    const state = get();
+    if (state.connecting) return;
+    const candidate = pickReconnect(state.server, devices);
+    if (!candidate) return;
+    autoConnectAttempted.add(candidate.baseUrl);
+    void state.connectSaved(candidate.baseUrl, true);
   },
 
   onCacheProgress(progress) {

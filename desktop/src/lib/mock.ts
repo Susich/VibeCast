@@ -434,6 +434,22 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       emit("server://changed", null);
       return undefined as T;
     }
+    case "connect_saved": {
+      const rawUrl = String(input.url ?? "").trim();
+      let baseUrl = rawUrl.replace(/#.*$/, "") || "http://192.168.1.42:8765";
+      if (!/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`;
+      server = {
+        baseUrl: baseUrl.replace(/\/$/, ""),
+        deviceName: "Pixel 8",
+        online: true,
+        version: 8,
+        trackCount: allTracks.length,
+        protocol: 1,
+        hasToken: true,
+      };
+      emit("server://changed", server);
+      return delay(server, 150) as Promise<T>;
+    }
     case "connect_manual": {
       const token = String(input.token ?? "").trim();
       if (token === "bad") {

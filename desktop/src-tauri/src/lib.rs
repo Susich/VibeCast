@@ -43,6 +43,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap,
             commands::connect_manual,
+            commands::connect_saved,
             commands::disconnect,
             commands::search_tracks,
             commands::facets,

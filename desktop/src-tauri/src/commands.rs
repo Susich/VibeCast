@@ -49,9 +49,35 @@ pub async fn connect_manual(
         .filter(|value| !value.is_empty())
         .or(token_from_url)
         .ok_or_else(|| {
-            "Укажите токен с телефона. Он показан на экране VibeCast под QR-кодом.".to_string()
+            "Укажите токен с телефона. Его можно скопировать на экране VibeCast.".to_string()
         })?;
 
+    apply_connection(&app, state.inner(), base_url, token, true).await
+}
+
+/// Reconnects to a phone that was paired before, reusing its saved bearer
+/// token. This is what the "found on the network" card calls after the phone
+/// changes IP: the user does not need to copy the token again.
+#[tauri::command]
+pub async fn connect_saved(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<ServerView, String> {
+    let (base_url, _) = normalize_base(&url)?;
+    let saved = state
+        .session()
+        .ok_or_else(|| "Нет сохранённого подключения. Введите токен с телефона.".to_string())?;
+    apply_connection(&app, state.inner(), base_url, saved.token, false).await
+}
+
+async fn apply_connection(
+    app: &AppHandle,
+    state: &AppState,
+    base_url: String,
+    token: String,
+    reset_on_base_change: bool,
+) -> Result<ServerView, String> {
     let health = catalog::validate_token(&state.http, &base_url, &token).await?;
 
     let previous_base = state.session().map(|session| session.base_url);
@@ -63,7 +89,7 @@ pub async fn connect_manual(
     };
 
     state.db.save_server(&session)?;
-    if base_changed {
+    if reset_on_base_change && base_changed {
         state.db.reset_catalog()?;
         state.version.store(0, Ordering::SeqCst);
         state.track_count.store(0, Ordering::SeqCst);
@@ -77,21 +103,21 @@ pub async fn connect_manual(
     }
     state.protocol.store(health.protocol, Ordering::SeqCst);
     state.connection_epoch.fetch_add(1, Ordering::SeqCst);
-    state.set_online(&app, true);
-    stop_sse(&app);
+    state.set_online(app, true);
+    stop_sse(app);
 
-    let stats = match sync_catalog(&app).await {
+    let stats = match sync_catalog(app).await {
         Ok(stats) => stats,
         Err(err) => {
-            state.set_online(&app, false);
+            state.set_online(app, false);
             return Err(format!(
                 "Телефон найден, но библиотека не загрузилась: {err}"
             ));
         }
     };
-    emit_library(&app, &stats);
-    restart_sse(&app);
-    state.emit_server(&app);
+    emit_library(app, &stats);
+    restart_sse(app);
+    state.emit_server(app);
 
     state
         .server_view()
@@ -435,7 +461,7 @@ async fn sse_loop(app: AppHandle, generation: u64) {
                 state.set_online(&app, false);
                 toast(
                     &app,
-                    "Телефон отклонил токен. Подключитесь заново и отсканируйте QR-код.",
+                    "Телефон отклонил токен. Подключитесь заново и скопируйте токен с телефона.",
                     "error",
                 );
                 return;

@@ -8,7 +8,7 @@ use crate::models::{Health, LibraryPage, Track, VersionEvent};
 const PAGE_SIZE: u32 = 500;
 const MAX_TRACKS: usize = 100_000;
 
-/// Accepts `http://host:port`, `host:port`, or a QR URL with the token in the
+/// Accepts `http://host:port`, `host:port`, or a connection URL with the token in the
 /// fragment. Returns (base_url, token_from_url).
 pub fn normalize_base(input: &str) -> Result<(String, Option<String>), String> {
     let raw = input.trim();
@@ -124,10 +124,7 @@ async fn fetch_page(
         .map_err(connection_error)?;
 
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err(
-            "Неверный токен. Отсканируйте QR-код заново или скопируйте токен с телефона."
-                .to_string(),
-        );
+        return Err("Неверный токен. Скопируйте токен или ссылку с экрана телефона.".to_string());
     }
     if !response.status().is_success() {
         return Err(format!(
