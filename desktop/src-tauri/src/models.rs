@@ -76,7 +76,7 @@ pub struct ServerView {
     pub has_token: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Device {
     pub id: String,

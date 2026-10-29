@@ -118,6 +118,7 @@ function sameDeviceName(saved: string, discovered: string): boolean {
 }
 
 let autoConnectAttempted = new Set<string>();
+let discoveryPrompted = false;
 
 function pickReconnect(
   server: ServerView | null,
@@ -185,6 +186,10 @@ export const useStore = create<Store>()((set, get) => ({
         booted: true,
       });
       await Promise.all([get().refreshLibrary(), get().refreshFacets()]);
+      if (!get().server && get().devices.length > 0) {
+        discoveryPrompted = true;
+        set({ connectOpen: true });
+      }
       const candidate = pickReconnect(get().server, get().devices);
       if (candidate) {
         autoConnectAttempted.add(candidate.baseUrl);
@@ -596,6 +601,17 @@ export const useStore = create<Store>()((set, get) => ({
   onDevices(devices) {
     set({ devices });
     const state = get();
+    if (
+      !discoveryPrompted &&
+      state.booted &&
+      !state.server &&
+      !state.connectOpen &&
+      !state.connecting &&
+      devices.length > 0
+    ) {
+      discoveryPrompted = true;
+      set({ connectOpen: true });
+    }
     if (state.connecting) return;
     const candidate = pickReconnect(state.server, devices);
     if (!candidate) return;

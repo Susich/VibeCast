@@ -90,7 +90,7 @@ export function ConnectModal() {
             <div className="section-title">
               <span>Найдено в сети</span>
               <span className="live-pill">
-                <span className="status-dot live" /> mDNS
+                <span className="status-dot live" /> в сети
               </span>
             </div>
 

@@ -57,13 +57,7 @@ impl AppState {
 
         let cache = CacheManager::new(app.clone(), http.clone(), &crate::cache::cache_root())?;
         let player = PlayerHandle::new(app.clone(), volume, settings.mpv_path.clone());
-        let discovery = match Discovery::start(app.clone()) {
-            Ok(discovery) => discovery,
-            Err(err) => {
-                log::warn!("{err}");
-                Discovery::empty()
-            }
-        };
+        let discovery = Discovery::start(app.clone());
         let session = db.load_server();
 
         Ok(Self {
