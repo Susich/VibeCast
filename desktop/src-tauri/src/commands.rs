@@ -99,7 +99,7 @@ pub async fn connect_manual(
 }
 
 #[tauri::command]
-pub fn disconnect(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn disconnect(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     state.connection_epoch.fetch_add(1, Ordering::SeqCst);
     stop_sse(&app);
     {
@@ -110,7 +110,13 @@ pub fn disconnect(app: AppHandle, state: State<'_, AppState>) -> Result<(), Stri
         *current = None;
     }
     state.db.clear_server()?;
+    // Явное отключение очищает каталог: чужие треки не должны оставаться на ПК.
+    state.db.reset_catalog()?;
+    state.version.store(0, Ordering::SeqCst);
+    state.track_count.store(0, Ordering::SeqCst);
+    state.player.stop().await;
     state.set_online(&app, false);
+    emit_library(&app, &state.stats());
     state.emit_server(&app);
     Ok(())
 }
