@@ -101,6 +101,7 @@ function TrackRowItem({
 }
 
 function EmptyState() {
+  const view = useStore((state) => state.view);
   const server = useStore((state) => state.server);
   const search = useStore((state) => state.search);
   const artist = useStore((state) => state.artist);
@@ -108,6 +109,20 @@ function EmptyState() {
   const libraryError = useStore((state) => state.libraryError);
   const openConnect = useStore((state) => state.openConnect);
   const navigate = useStore((state) => state.navigate);
+
+  if (view === "cached") {
+    return (
+      <div className="empty-state">
+        <div className="empty-icon">
+          <DownloadIcon size={32} />
+        </div>
+        <h3>В кэше пока нет треков</h3>
+        <p>
+          Треки, которые вы слушаете, автоматически сохраняются на диск для офлайн-воспроизведения без сети.
+        </p>
+      </div>
+    );
+  }
 
   if (libraryError) {
     return (

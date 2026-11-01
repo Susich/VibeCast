@@ -331,7 +331,6 @@ impl PlayerHandle {
             "--no-video",
             "--gapless-audio=yes",
             "--audio-buffer=0.3",
-            "--softvol=yes",
             "--no-terminal",
             "--force-window=no",
             "--keep-open=no",
@@ -343,7 +342,7 @@ impl PlayerHandle {
         command
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stderr(Stdio::piped());
 
         #[cfg(windows)]
         {
@@ -360,9 +359,18 @@ impl PlayerHandle {
         let mut last_error = None;
         for _ in 0..60 {
             if let Ok(Some(status)) = child.try_wait() {
-                return Err(format!(
-                    "mpv завершился сразу после запуска ({status}). Проверьте установку mpv."
-                ));
+                let mut err_msg = String::new();
+                if let Some(mut stderr) = child.stderr.take() {
+                    use std::io::Read;
+                    let _ = stderr.read_to_string(&mut err_msg);
+                }
+                let details = err_msg.trim();
+                let msg = if details.is_empty() {
+                    format!("mpv завершился сразу после запуска ({status}). Проверьте установку mpv.")
+                } else {
+                    format!("mpv завершился с ошибкой ({status}): {details}")
+                };
+                return Err(msg);
             }
             match connect_ipc(&socket).await {
                 Ok(stream) => {

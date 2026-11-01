@@ -102,6 +102,7 @@ export interface SearchQuery {
   sort?: SortKey;
   limit?: number;
   offset?: number;
+  cachedOnly?: boolean;
 }
 
 export type SortKey = "title" | "artist" | "album" | "duration" | "added";
@@ -141,7 +142,7 @@ export interface ToastMessage {
   level: "info" | "success" | "error";
 }
 
-export type ViewKind = "tracks" | "artists" | "albums";
+export type ViewKind = "tracks" | "cached" | "artists" | "albums";
 
 export const emptyStats: LibraryStats = {
   tracks: 0,

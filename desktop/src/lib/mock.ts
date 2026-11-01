@@ -225,6 +225,7 @@ function search(query: SearchQuery): SearchResult {
   }
   if (query.artist) result = result.filter((track) => track.artist === query.artist);
   if (query.album) result = result.filter((track) => track.album === query.album);
+  if (query.cachedOnly) result = result.filter((track) => cachedIds.has(track.id));
   const offset = Math.max(0, query.offset ?? 0);
   const limit = Math.max(1, query.limit ?? 20000);
   return {

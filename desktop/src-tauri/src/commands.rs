@@ -152,9 +152,14 @@ pub fn search_tracks(
     state: State<'_, AppState>,
     query: SearchQuery,
 ) -> Result<SearchResult, String> {
+    let cached_only = query.cached_only.unwrap_or(false);
     let mut result = state.db.search(&query)?;
     for row in &mut result.tracks {
         row.cached = state.cache.is_cached(&row.track.id);
+    }
+    if cached_only {
+        result.tracks.retain(|row| row.cached);
+        result.total = result.tracks.len() as i64;
     }
     Ok(result)
 }

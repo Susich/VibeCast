@@ -187,6 +187,7 @@ pub struct SearchQuery {
     pub sort: Option<String>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+    pub cached_only: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]

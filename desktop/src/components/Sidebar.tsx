@@ -100,6 +100,11 @@ export function Sidebar() {
           <span>Все треки</span>
           <em>{stats.tracks || ""}</em>
         </button>
+        <button className={`nav-item ${view === "cached" ? "active" : ""}`} onClick={() => navigate("cached")}>
+          <DownloadIcon size={18} />
+          <span>В кэше</span>
+          <em>{cachedCount || ""}</em>
+        </button>
         <button className={`nav-item ${view === "artists" ? "active" : ""}`} onClick={() => navigate("artists")}>
           <UsersIcon size={18} />
           <span>Исполнители</span>
@@ -114,9 +119,11 @@ export function Sidebar() {
 
       <div className="sidebar-section-head">
         <span>
-          {isArtists ? "Исполнители" : isAlbums ? "Альбомы" : "Библиотека"}
+          {isArtists ? "Исполнители" : isAlbums ? "Альбомы" : view === "cached" ? "Офлайн-кэш" : "Библиотека"}
         </span>
-        <span className="sidebar-section-count">{rows || stats.tracks}</span>
+        <span className="sidebar-section-count">
+          {isArtists ? rows : isAlbums ? rows : view === "cached" ? cachedCount : stats.tracks}
+        </span>
       </div>
 
       <div className="sidebar-scroll" ref={listRef}>
@@ -173,63 +180,33 @@ export function Sidebar() {
 
         {!isArtists && !isAlbums && (
           <div className="sidebar-panels">
+            {upcoming.length > 0 && (
+              <>
+                <div className="queue-preview-head">
+                  <span>Дальше в очереди</span>
+                  <button className="icon-button tiny" onClick={toggleQueue} title="Открыть очередь">
+                    <ListMusicIcon size={16} />
+                  </button>
+                </div>
+                <div className="queue-preview">
+                  {upcoming.map(({ track, index }) => (
+                    <button key={`${track.id}:${index}`} className="queue-mini" onClick={() => playQueueItem(index)}>
+                      <Cover trackId={track.id} title={track.album} size={30} />
+                      <span>
+                        <b>{track.title}</b>
+                        <small>{track.artist}</small>
+                      </span>
+                      <QueueIcon size={14} />
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
             {!server && (
               <div className="sidebar-note">
                 <WifiOffIcon size={17} />
-                <span>Подключите телефон по Wi-Fi, чтобы увидеть библиотеку.</span>
-              </div>
-            )}
-
-            <div className="stat-grid">
-              <div>
-                <b>{stats.tracks}</b>
-                <span>{formatCount(stats.tracks, "трек", "трека", "треков")}</span>
-              </div>
-              <div>
-                <b>{stats.artists}</b>
-                <span>{formatCount(stats.artists, "артист", "артиста", "артистов")}</span>
-              </div>
-              <div>
-                <b>{stats.albums}</b>
-                <span>{formatCount(stats.albums, "альбом", "альбома", "альбомов")}</span>
-              </div>
-            </div>
-
-            <button className="cache-card" onClick={openSettings} title="Настройки кэша">
-              <span className="cache-icon">
-                <DownloadIcon size={18} />
-              </span>
-              <span>
-                <b>{formatCount(cachedCount, "трек", "трека", "треков")} в кэше</b>
-                <small>повторное воспроизведение с диска</small>
-              </span>
-            </button>
-
-            <div className="queue-preview-head">
-              <span>Дальше в очереди</span>
-              <button className="icon-button tiny" onClick={toggleQueue} title="Открыть очередь">
-                <ListMusicIcon size={16} />
-              </button>
-            </div>
-
-            {upcoming.length > 0 ? (
-              <div className="queue-preview">
-                {upcoming.map(({ track, index }) => (
-                  <button key={`${track.id}:${index}`} className="queue-mini" onClick={() => playQueueItem(index)}>
-                    <Cover trackId={track.id} title={track.album} size={30} />
-                    <span>
-                      <b>{track.title}</b>
-                      <small>{track.artist}</small>
-                    </span>
-                    <QueueIcon size={14} />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="queue-empty">
-                <QueueIcon size={25} />
-                <span>Очередь пуста</span>
-                <small>Щёлкните трек, чтобы начать</small>
+                <span>Телефон не подключён. Треки из кэша доступны для воспроизведения офлайн.</span>
               </div>
             )}
           </div>

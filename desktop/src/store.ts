@@ -254,6 +254,7 @@ export const useStore = create<Store>()((set, get) => ({
       artist: state.artist ?? undefined,
       album: state.album ?? undefined,
       sort: state.sort,
+      cachedOnly: state.view === "cached" ? true : undefined,
       limit: 20000,
       offset: 0,
     };

@@ -12,7 +12,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Toasts } from "./components/Toasts";
 import { TopBar } from "./components/TopBar";
 import { TrackList } from "./components/TrackList";
-import { DiscIcon, MusicIcon, RadioIcon, UsersIcon, WifiOffIcon, XIcon } from "./components/Icons";
+import { DiscIcon, DownloadIcon, MusicIcon, RadioIcon, UsersIcon, WifiOffIcon, XIcon } from "./components/Icons";
 
 function ViewHeader() {
   const view = useStore((state) => state.view);
@@ -23,6 +23,25 @@ function ViewHeader() {
   const facets = useStore((state) => state.facets);
   const clearFilters = useStore((state) => state.clearFilters);
   const loading = useStore((state) => state.loading);
+
+  if (view === "cached") {
+    return (
+      <div className="view-header">
+        <div>
+          <span className="eyebrow">Офлайн-доступ</span>
+          <h1>В кэше</h1>
+          <p>
+            {loading
+              ? "Загрузка…"
+              : `${formatCount(total, "трек", "трека", "треков")} · доступно без интернета`}
+          </p>
+        </div>
+        <div className="view-mark">
+          <DownloadIcon size={30} />
+        </div>
+      </div>
+    );
+  }
 
   if (view === "artists") {
     return (
