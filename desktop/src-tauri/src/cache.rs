@@ -144,19 +144,68 @@ impl CacheManager {
     }
 
     pub fn cached_path(&self, track: &Track) -> Option<PathBuf> {
-        let path = self.path_for(track)?;
-        let valid = path
-            .metadata()
-            .map(|meta| meta.is_file() && meta.len() > 0)
-            .unwrap_or(false);
-        if valid {
-            if let Ok(mut set) = self.inner.cached.lock() {
-                set.insert(track.id.clone());
+        // 1. Check exact path derived from track.mime
+        if let Some(path) = self.path_for(track) {
+            if path
+                .metadata()
+                .map(|meta| meta.is_file() && meta.len() > 0)
+                .unwrap_or(false)
+            {
+                if let Ok(mut set) = self.inner.cached.lock() {
+                    set.insert(track.id.clone());
+                }
+                return Some(path);
             }
-            Some(path)
-        } else {
-            None
         }
+
+        // 2. Fall back to finding by ID across all known audio extensions
+        self.cached_path_for_id(&track.id)
+    }
+
+    pub fn cached_path_for_id(&self, track_id: &str) -> Option<PathBuf> {
+        let id = safe_id(track_id)?;
+
+        // Check common audio extensions in priority order
+        const EXTENSIONS: &[&str] = &[
+            "mp3", "m4a", "flac", "wav", "ogg", "opus", "aac", "wma", "aiff", "audio",
+        ];
+        for ext in EXTENSIONS {
+            let candidate = self.inner.audio_dir.join(format!("{id}.{ext}"));
+            if candidate
+                .metadata()
+                .map(|m| m.is_file() && m.len() > 0)
+                .unwrap_or(false)
+            {
+                if let Ok(mut set) = self.inner.cached.lock() {
+                    set.insert(track_id.to_string());
+                }
+                return Some(candidate);
+            }
+        }
+
+        // Deep fallback: scan audio_dir for any file with matching stem
+        if let Ok(entries) = std::fs::read_dir(&self.inner.audio_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().and_then(|e| e.to_str()) != Some("part") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if stem == id
+                            && path
+                                .metadata()
+                                .map(|m| m.is_file() && m.len() > 0)
+                                .unwrap_or(false)
+                        {
+                            if let Ok(mut set) = self.inner.cached.lock() {
+                                set.insert(track_id.to_string());
+                            }
+                            return Some(path);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     pub fn ensure_download(&self, track: Track, base_url: String, token: String) {

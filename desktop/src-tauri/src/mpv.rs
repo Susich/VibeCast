@@ -186,10 +186,17 @@ impl PlayerHandle {
             options.insert("start".to_string(), json!(format!("{start:.3}")));
         }
 
-        let command = json!({
-            "command": ["loadfile", uri, "replace", -1, options],
-            "request_id": self.request_id.fetch_add(1, Ordering::Relaxed),
-        });
+        let command = if options.is_empty() {
+            json!({
+                "command": ["loadfile", uri, "replace"],
+                "request_id": self.request_id.fetch_add(1, Ordering::Relaxed),
+            })
+        } else {
+            json!({
+                "command": ["loadfile", uri, "replace", -1, options],
+                "request_id": self.request_id.fetch_add(1, Ordering::Relaxed),
+            })
+        };
         self.send(command).await?;
 
         self.emit_state(true);
@@ -725,4 +732,21 @@ async fn connect_ipc(path: &str) -> std::io::Result<Box<dyn IpcStream>> {
 async fn connect_ipc(path: &str) -> std::io::Result<Box<dyn IpcStream>> {
     let stream = tokio::net::UnixStream::connect(path).await?;
     Ok(Box::new(stream))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_socket_path_generation() {
+        let p1 = socket_path();
+        let p2 = socket_path();
+        assert!(!p1.is_empty());
+        assert!(!p2.is_empty());
+        #[cfg(windows)]
+        {
+            assert!(p1.starts_with(r"\\.\pipe\vibecast-mpv-"));
+        }
+    }
 }

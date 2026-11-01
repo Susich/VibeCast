@@ -169,16 +169,52 @@ pub async fn play_track(
     state: State<'_, AppState>,
     track_id: String,
 ) -> Result<PlayerState, String> {
-    let track = state
-        .db
-        .get_track(&track_id)?
-        .ok_or_else(|| "Трек не найден в каталоге".to_string())?;
+    let track = match state.db.get_track(&track_id)? {
+        Some(t) => t,
+        None => {
+            // Check if track is present in local cache even without DB entry
+            if let Some(cached_file) = state.cache.cached_path_for_id(&track_id) {
+                let ext = cached_file
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("audio");
+                let mime = match ext {
+                    "mp3" => "audio/mpeg",
+                    "m4a" => "audio/mp4",
+                    "flac" => "audio/flac",
+                    "wav" => "audio/wav",
+                    "ogg" => "audio/ogg",
+                    "opus" => "audio/opus",
+                    _ => "audio/octet-stream",
+                };
+                crate::models::Track {
+                    id: track_id.clone(),
+                    title: format!("Кэш ({})", &track_id[..8.min(track_id.len())]),
+                    artist: "Локальный кэш".to_string(),
+                    album: "Сохранённые треки".to_string(),
+                    album_artist: None,
+                    duration_ms: 0,
+                    mime: mime.to_string(),
+                    size: cached_file.metadata().map(|m| m.len() as i64).unwrap_or(0),
+                    track_no: None,
+                    year: None,
+                    cover_id: None,
+                    date_modified: 0,
+                }
+            } else {
+                return Err("Трек не найден в каталоге".to_string());
+            }
+        }
+    };
 
     let cached = state.cache.cached_path(&track);
     let session = state.session();
 
     let (uri, remote, token, download) = match cached {
-        Some(path) => (path.to_string_lossy().to_string(), false, None, None),
+        Some(path) => {
+            let normalized = path.to_string_lossy().replace('\\', "/");
+            (normalized, false, None, None)
+        }
         None => {
             let session = session
                 .as_ref()

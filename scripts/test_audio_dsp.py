@@ -51,11 +51,13 @@ def test_volume_smoother_reaches_target():
     print("  -> Passed.")
 
 def test_themes_palette_completeness():
-    print("Test 4: Verification of 6 theme palettes...")
-    expected_themes = ["cyberpunk", "midnight", "catppuccin", "dracula", "nord", "solarized"]
+    print("Test 4: Verification of dark theme palettes...")
+    expected_themes = ["cyberpunk", "midnight", "catppuccin", "dracula", "nord"]
+    assert len(THEMES) == len(expected_themes), f"Expected only {len(expected_themes)} dark themes, found {len(THEMES)}"
     for theme_id in expected_themes:
         theme = get_theme(theme_id)
         assert theme is not None, f"Missing theme: {theme_id}"
+        assert theme.is_dark is True, f"Theme {theme_id} must be dark"
         tokens = theme.tokens
         for token_field in [
             "bg_primary", "bg_card", "accent", "accent_hover",
@@ -63,7 +65,7 @@ def test_themes_palette_completeness():
         ]:
             val = getattr(tokens, token_field, None)
             assert val is not None and len(val) > 0, f"Missing token {token_field} in theme {theme_id}"
-    print(f"  -> All {len(expected_themes)} themes validated with all required color tokens.")
+    print(f"  -> All {len(expected_themes)} dark themes validated with all required color tokens.")
 
 if __name__ == "__main__":
     test_volume_smoother_basic()

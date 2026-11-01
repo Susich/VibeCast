@@ -23,7 +23,7 @@
       "accent_hover": "#60a5fa",
       "text_main": "#e0e0e0",
       "text_muted": "#888888",
-      "border": "#222222",
+      "border": "#242424",
       "meter_gradient": "linear-gradient(180deg, #60a5fa, #3b82f6)"
     }
   },
@@ -31,13 +31,13 @@
     "name": "Catppuccin Mocha",
     "isDark": true,
     "tokens": {
-      "bg_primary": "#1e1e2e",
-      "bg_card": "#313244",
+      "bg_primary": "#181825",
+      "bg_card": "#1e1e2e",
       "accent": "#b4befe",
       "accent_hover": "#fab387",
       "text_main": "#cdd6f4",
       "text_muted": "#a6adc8",
-      "border": "#45475a",
+      "border": "#313244",
       "meter_gradient": "linear-gradient(180deg, #fab387, #b4befe)"
     }
   },
@@ -45,13 +45,13 @@
     "name": "Dracula Classic",
     "isDark": true,
     "tokens": {
-      "bg_primary": "#282a36",
-      "bg_card": "#44475a",
+      "bg_primary": "#1e1f29",
+      "bg_card": "#282a36",
       "accent": "#ff79c6",
       "accent_hover": "#50fa7b",
       "text_main": "#f8f8f2",
       "text_muted": "#6272a4",
-      "border": "#6272a4",
+      "border": "#44475a",
       "meter_gradient": "linear-gradient(180deg, #ff79c6, #50fa7b)"
     }
   },
@@ -59,28 +59,14 @@
     "name": "Nord Frost",
     "isDark": true,
     "tokens": {
-      "bg_primary": "#2e3440",
-      "bg_card": "#3b4252",
+      "bg_primary": "#242933",
+      "bg_card": "#2e3440",
       "accent": "#88c0d0",
       "accent_hover": "#81a1c1",
       "text_main": "#eceff4",
       "text_muted": "#d8dee9",
-      "border": "#4c566a",
+      "border": "#3b4252",
       "meter_gradient": "linear-gradient(180deg, #8fbcbb, #88c0d0)"
-    }
-  },
-  "solarized": {
-    "name": "Solarized Light / Minimal Paper",
-    "isDark": false,
-    "tokens": {
-      "bg_primary": "#fdf6e3",
-      "bg_card": "#eee8d5",
-      "accent": "#b58900",
-      "accent_hover": "#cb4b16",
-      "text_main": "#657b83",
-      "text_muted": "#93a1a1",
-      "border": "#dfdac9",
-      "meter_gradient": "linear-gradient(180deg, #cb4b16, #b58900)"
     }
   }
 }
