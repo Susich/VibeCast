@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::{stream, StreamExt};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
@@ -11,8 +11,8 @@ use tauri::{AppHandle, Emitter};
 use crate::models::{Device, Health};
 
 pub struct Discovery {
-    // Keeping the daemon alive keeps the browse thread and socket alive.
     _daemon: Option<ServiceDaemon>,
+    udp_beacons: Arc<Mutex<HashMap<String, (Device, Instant)>>>,
     devices: Arc<Mutex<HashMap<String, Device>>>,
     scanned: Arc<Mutex<HashMap<String, Device>>>,
     stop: Arc<AtomicBool>,
@@ -20,14 +20,105 @@ pub struct Discovery {
 
 impl Discovery {
     pub fn start(app: AppHandle) -> Self {
+        let udp_beacons = Arc::new(Mutex::new(HashMap::<String, (Device, Instant)>::new()));
         let devices = Arc::new(Mutex::new(HashMap::<String, Device>::new()));
         let scanned = Arc::new(Mutex::new(HashMap::<String, Device>::new()));
         let stop = Arc::new(AtomicBool::new(false));
 
-        // A failed mdns-sd daemon must not disable the LAN health scan below.
+        // 1. UDP Broadcast Listener on port 41234
+        let udp_app = app.clone();
+        let udp_map = udp_beacons.clone();
+        let udp_devices = devices.clone();
+        let udp_scanned = scanned.clone();
+        let udp_stop = stop.clone();
+
+        tauri::async_runtime::spawn(async move {
+            let socket = match tokio::net::UdpSocket::bind("0.0.0.0:41234").await {
+                Ok(s) => {
+                    let _ = s.set_broadcast(true);
+                    log::info!("UDP Discovery: слушает broadcast на 0.0.0.0:41234");
+                    Some(s)
+                }
+                Err(err) => {
+                    log::warn!("UDP Discovery: не удалось открыть 0.0.0.0:41234: {err}");
+                    None
+                }
+            };
+
+            let Some(socket) = socket else { return };
+            let mut buf = [0u8; 2048];
+            let ping_client = reqwest::Client::builder()
+                .connect_timeout(Duration::from_millis(400))
+                .timeout(Duration::from_millis(800))
+                .no_proxy()
+                .build()
+                .ok();
+
+            while !udp_stop.load(Ordering::Relaxed) {
+                tokio::select! {
+                    res = socket.recv_from(&mut buf) => {
+                        if let Ok((len, peer_addr)) = res {
+                            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&buf[..len]) {
+                                let service = val.get("service").and_then(|v| v.as_str()).unwrap_or("");
+                                if service == "audio_stream" || service == "vibecast" {
+                                    let dev_name = val.get("device_name")
+                                        .or_else(|| val.get("name"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Android");
+                                    let port = val.get("port")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(8765) as u16;
+                                    let host = peer_addr.ip().to_string();
+                                    let base_url = format!("http://{host}:{port}");
+                                    let version = val.get("version").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                    let token_required = val.get("token_required").and_then(|v| v.as_bool()).unwrap_or(true);
+
+                                    let mut ping_ms = None;
+                                    if let Some(ref client) = ping_client {
+                                        let start = Instant::now();
+                                        if let Ok(resp) = client.get(format!("{base_url}/health")).send().await {
+                                            if resp.status().is_success() {
+                                                ping_ms = Some(start.elapsed().as_millis().max(1) as u64);
+                                            }
+                                        }
+                                    }
+
+                                    let device = Device {
+                                        id: format!("udp:{host}:{port}"),
+                                        name: dev_name.to_string(),
+                                        host,
+                                        port,
+                                        base_url,
+                                        version,
+                                        token_required,
+                                        ping_ms: ping_ms.or(Some(4)),
+                                        source: Some("UDP Broadcast".to_string()),
+                                    };
+
+                                    let changed = if let Ok(mut map) = udp_map.lock() {
+                                        map.insert(device.id.clone(), (device, Instant::now()));
+                                        true
+                                    } else {
+                                        false
+                                    };
+
+                                    if changed {
+                                        emit_merged_all(&udp_app, &udp_map, &udp_devices, &udp_scanned);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ = tokio::time::sleep(Duration::from_millis(500)) => {}
+                }
+            }
+        });
+
+        // 2. mDNS Discovery (_vibecast._tcp.local.)
         let mdns_daemon = match ServiceDaemon::new() {
             Ok(daemon) => match daemon.browse("_vibecast._tcp.local.") {
                 Ok(receiver) => {
+                    let thread_udp = udp_beacons.clone();
                     let thread_devices = devices.clone();
                     let thread_scanned = scanned.clone();
                     let thread_app = app.clone();
@@ -67,6 +158,8 @@ impl Discovery {
                                         base_url: format!("http://{ip}:{port}"),
                                         version,
                                         token_required,
+                                        ping_ms: Some(8),
+                                        source: Some("mDNS".to_string()),
                                     };
 
                                     match thread_devices.lock() {
@@ -86,7 +179,7 @@ impl Discovery {
                             }
 
                             if changed {
-                                emit_merged(&thread_app, &thread_devices, &thread_scanned);
+                                emit_merged_all(&thread_app, &thread_udp, &thread_devices, &thread_scanned);
                             }
                         }
                     });
@@ -103,11 +196,9 @@ impl Discovery {
             }
         };
 
-        // NsdManager or a router/firewall can silently block multicast. The
-        // phone also exposes a public /health endpoint, so probe the local /24
-        // as a fallback. This keeps discovery working on networks where mDNS
-        // packets never leave the phone (or never reach this PC).
-        let scan_app = app;
+        // 3. Fallback LAN /health probing
+        let scan_app = app.clone();
+        let scan_udp = udp_beacons.clone();
         let scan_devices = devices.clone();
         let scan_scanned = scanned.clone();
         let scan_stop = stop.clone();
@@ -115,7 +206,6 @@ impl Discovery {
             let client = match reqwest::Client::builder()
                 .connect_timeout(Duration::from_millis(300))
                 .timeout(Duration::from_millis(900))
-                // A system HTTP proxy cannot reach the phone's LAN address.
                 .no_proxy()
                 .build()
             {
@@ -142,14 +232,71 @@ impl Discovery {
                     Err(_) => break,
                 };
                 if changed {
-                    emit_merged(&scan_app, &scan_devices, &scan_scanned);
+                    emit_merged_all(&scan_app, &scan_udp, &scan_devices, &scan_scanned);
                 }
-                tokio::time::sleep(Duration::from_secs(8)).await;
+                tokio::time::sleep(Duration::from_secs(6)).await;
+            }
+        });
+
+        // 4. Background ping updater for all active devices
+        let ping_app = app;
+        let ping_udp = udp_beacons.clone();
+        let ping_devices = devices.clone();
+        let ping_scanned = scanned.clone();
+        let ping_stop = stop.clone();
+        tauri::async_runtime::spawn(async move {
+            let ping_client = reqwest::Client::builder()
+                .connect_timeout(Duration::from_millis(400))
+                .timeout(Duration::from_millis(800))
+                .no_proxy()
+                .build()
+                .ok();
+
+            let Some(client) = ping_client else { return };
+            loop {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                if ping_stop.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                // Evict stale UDP beacons (> 20s)
+                let now = Instant::now();
+                if let Ok(mut udp_map) = ping_udp.lock() {
+                    udp_map.retain(|_, (_, seen)| now.duration_since(*seen) < Duration::from_secs(20));
+                }
+
+                let current_list = merge_devices_all(&ping_udp, &ping_devices, &ping_scanned);
+                for dev in current_list {
+                    let start = Instant::now();
+                    let url = format!("{}/health", dev.base_url);
+                    if let Ok(resp) = client.get(&url).send().await {
+                        if resp.status().is_success() {
+                            let ms = start.elapsed().as_millis().max(1) as u64;
+                            if let Ok(mut scanned_map) = ping_scanned.lock() {
+                                if let Some(d) = scanned_map.get_mut(&dev.id) {
+                                    d.ping_ms = Some(ms);
+                                }
+                            }
+                            if let Ok(mut udp_map) = ping_udp.lock() {
+                                if let Some((d, _)) = udp_map.get_mut(&dev.id) {
+                                    d.ping_ms = Some(ms);
+                                }
+                            }
+                            if let Ok(mut mdns_map) = ping_devices.lock() {
+                                if let Some(d) = mdns_map.get_mut(&dev.id) {
+                                    d.ping_ms = Some(ms);
+                                }
+                            }
+                        }
+                    }
+                }
+                emit_merged_all(&ping_app, &ping_udp, &ping_devices, &ping_scanned);
             }
         });
 
         Self {
             _daemon: mdns_daemon,
+            udp_beacons,
             devices,
             scanned,
             stop,
@@ -157,7 +304,7 @@ impl Discovery {
     }
 
     pub fn devices(&self) -> Vec<Device> {
-        merge_devices(&self.devices, &self.scanned)
+        merge_devices_all(&self.udp_beacons, &self.devices, &self.scanned)
     }
 }
 
@@ -167,47 +314,58 @@ impl Drop for Discovery {
     }
 }
 
-fn emit_merged(
+fn emit_merged_all(
     app: &AppHandle,
+    udp: &Arc<Mutex<HashMap<String, (Device, Instant)>>>,
     mdns: &Arc<Mutex<HashMap<String, Device>>>,
     scanned: &Arc<Mutex<HashMap<String, Device>>>,
 ) {
-    let list = merge_devices(mdns, scanned);
+    let list = merge_devices_all(udp, mdns, scanned);
     let _ = app.emit("discovery://devices", list);
 }
 
-fn merge_devices(
+pub fn merge_devices_all(
+    udp: &Arc<Mutex<HashMap<String, (Device, Instant)>>>,
     mdns: &Arc<Mutex<HashMap<String, Device>>>,
     scanned: &Arc<Mutex<HashMap<String, Device>>>,
 ) -> Vec<Device> {
-    let mdns = match mdns.lock() {
-        Ok(map) => map,
-        Err(_) => return Vec::new(),
-    };
-    let scanned = match scanned.lock() {
-        Ok(map) => map,
-        Err(_) => return Vec::new(),
-    };
+    let udp = udp.lock().map(|m| m.clone()).unwrap_or_default();
+    let mdns = mdns.lock().map(|m| m.clone()).unwrap_or_default();
+    let scanned = scanned.lock().map(|m| m.clone()).unwrap_or_default();
 
-    // Prefer the HTTP-scanned entry: it is based on a fresh /health response
-    // and therefore has the phone's current address even after a DHCP change.
-    let mut list: Vec<Device> = scanned.values().cloned().collect();
-    for device in mdns.values() {
-        let duplicate_url = list.iter().any(|item| item.base_url == device.base_url);
-        let duplicate_phone = list
-            .iter()
-            .any(|item| item.name.eq_ignore_ascii_case(&device.name) && item.port == device.port);
-        if !duplicate_url && !duplicate_phone {
-            list.push(device.clone());
+    // 1. UDP beacons take highest priority (live broadcast beacon direct from phone)
+    let mut list: Vec<Device> = udp.into_values().map(|(d, _)| d).collect();
+
+    // 2. Add LAN scanned devices if not already present
+    for dev in scanned.into_values() {
+        let exists = list.iter().any(|d| d.base_url == dev.base_url || (d.name.eq_ignore_ascii_case(&dev.name) && d.port == dev.port));
+        if !exists {
+            list.push(dev);
         }
     }
+
+    // 3. Add mDNS devices if not already present
+    for dev in mdns.into_values() {
+        let exists = list.iter().any(|d| d.base_url == dev.base_url || (d.name.eq_ignore_ascii_case(&dev.name) && d.port == dev.port));
+        if !exists {
+            list.push(dev);
+        }
+    }
+
     list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     list
 }
 
-/// Probe the PC's local /24 for the Android `/health` endpoint. Only ports
-/// 8765-8766 are checked: the Android service takes the first free port and
-/// normally starts at 8765.
+// Retain merge_devices for backward compatibility in tests
+#[allow(dead_code)]
+pub fn merge_devices(
+    mdns: &Arc<Mutex<HashMap<String, Device>>>,
+    scanned: &Arc<Mutex<HashMap<String, Device>>>,
+) -> Vec<Device> {
+    let empty_udp = Arc::new(Mutex::new(HashMap::new()));
+    merge_devices_all(&empty_udp, mdns, scanned)
+}
+
 async fn scan_local_network(client: &reqwest::Client) -> HashMap<String, Device> {
     let Some(local) = local_ipv4() else {
         return HashMap::new();
@@ -230,8 +388,9 @@ async fn scan_local_network(client: &reqwest::Client) -> HashMap<String, Device>
             let client = client.clone();
             async move {
                 let url = format!("http://{host}:{port}/health");
+                let start = Instant::now();
                 let health = client
-                    .get(url)
+                    .get(&url)
                     .send()
                     .await
                     .ok()?
@@ -243,6 +402,7 @@ async fn scan_local_network(client: &reqwest::Client) -> HashMap<String, Device>
                 if !health.ok || health.app != "vibecast" {
                     return None;
                 }
+                let ping_ms = start.elapsed().as_millis().max(1) as u64;
                 let base_url = format!("http://{host}:{port}");
                 Some(Device {
                     id: format!("lan:{base_url}"),
@@ -252,6 +412,8 @@ async fn scan_local_network(client: &reqwest::Client) -> HashMap<String, Device>
                     base_url,
                     version: Some(health.protocol.to_string()),
                     token_required: true,
+                    ping_ms: Some(ping_ms),
+                    source: Some("LAN Scan".to_string()),
                 })
             }
         })
@@ -266,10 +428,7 @@ async fn scan_local_network(client: &reqwest::Client) -> HashMap<String, Device>
         .collect()
 }
 
-/// Prefer the address that shares a /24 with the PC's default route, then
-/// ordinary home/office LAN ranges, over VPN/virtual adapters. A phone that
-/// advertises several IPv4 addresses should remain reachable.
-fn pick_address(addresses: &std::collections::HashSet<Ipv4Addr>) -> Option<Ipv4Addr> {
+pub fn pick_address(addresses: &std::collections::HashSet<Ipv4Addr>) -> Option<Ipv4Addr> {
     let local = local_ipv4();
     addresses
         .iter()
@@ -283,7 +442,7 @@ fn pick_address(addresses: &std::collections::HashSet<Ipv4Addr>) -> Option<Ipv4A
         })
 }
 
-fn local_ipv4() -> Option<Ipv4Addr> {
+pub fn local_ipv4() -> Option<Ipv4Addr> {
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
     match socket.local_addr().ok()?.ip() {
@@ -292,20 +451,19 @@ fn local_ipv4() -> Option<Ipv4Addr> {
     }
 }
 
-fn lan_rank(ip: Ipv4Addr) -> u8 {
+pub fn lan_rank(ip: Ipv4Addr) -> u8 {
     match ip.octets() {
         [192, 168, _, _] => 0,
         [10, _, _, _] => 1,
         [172, second, _, _] if (16..=31).contains(&second) => 2,
         [169, 254, _, _] => 5,
-        // Public, CGNAT and VPN ranges are never a phone's LAN address.
         _ => 4,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{lan_rank, merge_devices, pick_address};
+    use super::*;
     use crate::models::Device;
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
@@ -319,6 +477,8 @@ mod tests {
             base_url: format!("http://{host}:{port}"),
             version: Some("1".to_string()),
             token_required: true,
+            ping_ms: Some(10),
+            source: Some("test".to_string()),
         }
     }
 
@@ -364,5 +524,23 @@ mod tests {
         assert_eq!(merged[0].name, "Pixel 8");
         assert_eq!(merged[1].name, "samsung SM-A546E");
         assert_eq!(merged[1].host, "192.168.1.13");
+    }
+
+    #[test]
+    fn udp_broadcast_takes_priority_and_merges_cleanly() {
+        let udp = Arc::new(Mutex::new(HashMap::from([(
+            "udp:192.168.1.15:8765".to_string(),
+            (device("udp:192.168.1.15:8765", "Galaxy Ultra", "192.168.1.15", 8765), Instant::now()),
+        )])));
+        let mdns = Arc::new(Mutex::new(HashMap::from([(
+            "mdns:192.168.1.20".to_string(),
+            device("mdns:192.168.1.20", "Pixel Tablet", "192.168.1.20", 8765),
+        )])));
+        let scanned = Arc::new(Mutex::new(HashMap::new()));
+
+        let merged = merge_devices_all(&udp, &mdns, &scanned);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].name, "Galaxy Ultra");
+        assert_eq!(merged[1].name, "Pixel Tablet");
     }
 }

@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { call } from "./lib/api";
 import { errorText } from "./lib/format";
+import { applyTheme } from "./themes";
 import type {
   Bootstrap,
   CacheProgress,
@@ -9,6 +10,7 @@ import type {
   Device,
   Facets,
   LibraryStats,
+  OverlayState,
   PlayerState,
   SearchQuery,
   SearchResult,
@@ -61,7 +63,12 @@ interface Store {
   progress: Record<string, CacheProgress>;
   toasts: ToastEntry[];
 
+  theme: string;
+  isOverlay: boolean;
+
   init: () => Promise<void>;
+  setTheme: (theme: string) => Promise<void>;
+  toggleOverlay: (enable?: boolean) => Promise<void>;
   refreshLibrary: () => Promise<void>;
   refreshFacets: () => Promise<void>;
   navigate: (view: ViewKind) => void;
@@ -103,7 +110,6 @@ interface Store {
 
 let libraryRequest = 0;
 let initializing = false;
-let volumeTimer: ReturnType<typeof setTimeout> | null = null;
 let toastCounter = 0;
 
 function updateRows(rows: TrackRow[], trackId: string, cached: boolean): TrackRow[] {
@@ -170,12 +176,23 @@ export const useStore = create<Store>()((set, get) => ({
   coverLoading: {},
   progress: {},
   toasts: [],
+  theme: "cyberpunk",
+  isOverlay: false,
 
   async init() {
     if (get().booted || initializing) return;
     initializing = true;
     try {
       const boot = await call<Bootstrap>("bootstrap");
+      const initialTheme = boot.settings.theme || "cyberpunk";
+      applyTheme(initialTheme);
+      let isOverlay = false;
+      try {
+        const overlay = await call<OverlayState>("get_overlay_state");
+        isOverlay = overlay.isOverlay;
+      } catch {
+        // default full window
+      }
       set({
         server: boot.server,
         devices: boot.devices,
@@ -183,6 +200,8 @@ export const useStore = create<Store>()((set, get) => ({
         settings: boot.settings,
         stats: boot.stats,
         cachedCount: boot.cachedCount,
+        theme: initialTheme,
+        isOverlay,
         booted: true,
       });
       await Promise.all([get().refreshLibrary(), get().refreshFacets()]);
@@ -199,6 +218,31 @@ export const useStore = create<Store>()((set, get) => ({
       set({ bootError: errorText(error), booted: true });
     } finally {
       initializing = false;
+    }
+  },
+
+  async setTheme(theme: string) {
+    applyTheme(theme);
+    set({
+      theme,
+      settings: { ...get().settings, theme },
+    });
+    try {
+      await call("set_theme", { theme });
+    } catch {
+      // fallback
+    }
+  },
+
+  async toggleOverlay(enable?: boolean) {
+    const target = typeof enable === "boolean" ? enable : !get().isOverlay;
+    set({ isOverlay: target });
+    try {
+      const res = await call<OverlayState>("set_overlay_mode", { enabled: target });
+      set({ isOverlay: res.isOverlay });
+    } catch (err) {
+      get().addToast(`Ошибка переключения оверлея: ${errorText(err)}`, "error");
+      set({ isOverlay: !target });
     }
   },
 
@@ -380,10 +424,8 @@ export const useStore = create<Store>()((set, get) => ({
       player: { ...get().player, volume: clamped },
       settings: { ...get().settings, volume: clamped },
     });
-    if (volumeTimer) clearTimeout(volumeTimer);
-    volumeTimer = setTimeout(() => {
-      void call<PlayerState>("set_volume", { volume: clamped }).catch(() => undefined);
-    }, 110);
+    // Instant real-time update to backend atomic volume (zero debounce):
+    void call<PlayerState>("set_volume", { volume: clamped }).catch(() => undefined);
   },
 
   onPlayerState(player) {

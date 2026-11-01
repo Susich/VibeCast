@@ -47,7 +47,11 @@ impl AppState {
         let mpv_path = db
             .get_setting("mpv_path")
             .filter(|value| !value.trim().is_empty());
-        let settings = Settings { volume, mpv_path };
+        let theme = db
+            .get_setting("theme")
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "cyberpunk".to_string());
+        let settings = Settings { volume, mpv_path, theme };
 
         let http = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(5))

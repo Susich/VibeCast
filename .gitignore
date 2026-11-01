@@ -42,6 +42,8 @@ desktop/src-tauri/binaries/
 desktop/src-tauri/tauri.conf.local.json
 
 # Test / cache
+__pycache__/
+*.pyc
 .cache/
 coverage/
 **/build/reports/

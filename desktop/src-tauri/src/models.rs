@@ -76,7 +76,7 @@ pub struct ServerView {
     pub has_token: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Device {
     pub id: String,
@@ -86,6 +86,10 @@ pub struct Device {
     pub base_url: String,
     pub version: Option<String>,
     pub token_required: bool,
+    #[serde(default)]
+    pub ping_ms: Option<u64>,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +97,12 @@ pub struct Device {
 pub struct Settings {
     pub volume: f64,
     pub mpv_path: Option<String>,
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_theme() -> String {
+    "cyberpunk".to_string()
 }
 
 impl Default for Settings {
@@ -100,8 +110,26 @@ impl Default for Settings {
         Self {
             volume: 80.0,
             mpv_path: None,
+            theme: default_theme(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OverlayState {
+    pub is_overlay: bool,
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppConfig {
+    pub theme: String,
+    pub volume: f64,
+    pub mpv_path: Option<String>,
+    pub overlay: OverlayState,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]

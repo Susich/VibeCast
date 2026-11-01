@@ -1,0 +1,86 @@
+{
+  "cyberpunk": {
+    "name": "Cyberpunk Neon",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#0d0e15",
+      "bg_card": "#161926",
+      "accent": "#00f0ff",
+      "accent_hover": "#38f9d7",
+      "text_main": "#f0f6fc",
+      "text_muted": "#bd93f9",
+      "border": "#2e334d",
+      "meter_gradient": "linear-gradient(180deg, #00f0ff, #bd93f9)"
+    }
+  },
+  "midnight": {
+    "name": "Midnight OLED",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#000000",
+      "bg_card": "#121212",
+      "accent": "#3b82f6",
+      "accent_hover": "#60a5fa",
+      "text_main": "#e0e0e0",
+      "text_muted": "#888888",
+      "border": "#222222",
+      "meter_gradient": "linear-gradient(180deg, #60a5fa, #3b82f6)"
+    }
+  },
+  "catppuccin": {
+    "name": "Catppuccin Mocha",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#1e1e2e",
+      "bg_card": "#313244",
+      "accent": "#b4befe",
+      "accent_hover": "#fab387",
+      "text_main": "#cdd6f4",
+      "text_muted": "#a6adc8",
+      "border": "#45475a",
+      "meter_gradient": "linear-gradient(180deg, #fab387, #b4befe)"
+    }
+  },
+  "dracula": {
+    "name": "Dracula Classic",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#282a36",
+      "bg_card": "#44475a",
+      "accent": "#ff79c6",
+      "accent_hover": "#50fa7b",
+      "text_main": "#f8f8f2",
+      "text_muted": "#6272a4",
+      "border": "#6272a4",
+      "meter_gradient": "linear-gradient(180deg, #ff79c6, #50fa7b)"
+    }
+  },
+  "nord": {
+    "name": "Nord Frost",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#2e3440",
+      "bg_card": "#3b4252",
+      "accent": "#88c0d0",
+      "accent_hover": "#81a1c1",
+      "text_main": "#eceff4",
+      "text_muted": "#d8dee9",
+      "border": "#4c566a",
+      "meter_gradient": "linear-gradient(180deg, #8fbcbb, #88c0d0)"
+    }
+  },
+  "solarized": {
+    "name": "Solarized Light / Minimal Paper",
+    "isDark": false,
+    "tokens": {
+      "bg_primary": "#fdf6e3",
+      "bg_card": "#eee8d5",
+      "accent": "#b58900",
+      "accent_hover": "#cb4b16",
+      "text_main": "#657b83",
+      "text_muted": "#93a1a1",
+      "border": "#dfdac9",
+      "meter_gradient": "linear-gradient(180deg, #cb4b16, #b58900)"
+    }
+  }
+}

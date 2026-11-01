@@ -4,6 +4,7 @@ import { formatCount, isEditableTarget } from "./lib/format";
 import { useStore } from "./store";
 import { AlbumsView, ArtistsView } from "./components/BrowseViews";
 import { ConnectModal } from "./components/ConnectModal";
+import { MiniOverlay } from "./components/MiniOverlay";
 import { PlayerBar } from "./components/PlayerBar";
 import { QueuePanel } from "./components/QueuePanel";
 import { SettingsModal } from "./components/SettingsModal";
@@ -134,6 +135,7 @@ export default function App() {
   const connectOpen = useStore((state) => state.connectOpen);
   const settingsOpen = useStore((state) => state.settingsOpen);
   const queueOpen = useStore((state) => state.queueOpen);
+  const isOverlay = useStore((state) => state.isOverlay);
   const init = useStore((state) => state.init);
   const refreshLibrary = useStore((state) => state.refreshLibrary);
   const next = useStore((state) => state.next);
@@ -199,6 +201,15 @@ export default function App() {
 
   if (bootError) return <BootError message={bootError} />;
   if (!booted) return <Splash />;
+
+  if (isOverlay) {
+    return (
+      <div className="overlay-root">
+        <MiniOverlay />
+        <Toasts />
+      </div>
+    );
+  }
 
   return (
     <div className={`app ${queueOpen ? "queue-is-open" : ""}`}>

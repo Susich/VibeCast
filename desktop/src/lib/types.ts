@@ -35,6 +35,8 @@ export interface Device {
   baseUrl: string;
   version: string | null;
   tokenRequired: boolean;
+  pingMs?: number | null;
+  source?: string | null;
 }
 
 export interface PlayerState {
@@ -55,6 +57,20 @@ export interface PlayerState {
 export interface Settings {
   volume: number;
   mpvPath: string | null;
+  theme?: string;
+}
+
+export interface OverlayState {
+  isOverlay: boolean;
+  x: number | null;
+  y: number | null;
+}
+
+export interface AppConfig {
+  theme: string;
+  volume: number;
+  mpvPath: string | null;
+  overlay: OverlayState;
 }
 
 export interface LibraryStats {

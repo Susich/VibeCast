@@ -6,6 +6,7 @@ import { useStore } from "../store";
 import { Cover } from "./Cover";
 import {
   MusicIcon,
+  OverlayIcon,
   PauseIcon,
   PlayIcon,
   QueueIcon,
@@ -26,6 +27,7 @@ export function PlayerBar() {
   const seek = useStore((state) => state.seek);
   const setVolume = useStore((state) => state.setVolume);
   const toggleQueue = useStore((state) => state.toggleQueue);
+  const toggleOverlay = useStore((state) => state.toggleOverlay);
 
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState(0);
@@ -67,6 +69,15 @@ export function PlayerBar() {
           </div>
           {player.error && <div className="now-error">{player.error}</div>}
         </div>
+        {current && (
+          <div className={`vu-meter bar-view ${!player.paused ? "playing" : "paused"}`} title="VU-метр">
+            <span className="vu-bar bar-1" />
+            <span className="vu-bar bar-2" />
+            <span className="vu-bar bar-3" />
+            <span className="vu-bar bar-4" />
+            <span className="vu-bar bar-5" />
+          </div>
+        )}
       </div>
 
       <div className="player-center">
@@ -157,6 +168,13 @@ export function PlayerBar() {
         >
           <QueueIcon size={19} />
           {queue.length > 0 && <span className="queue-dot">{queue.length}</span>}
+        </button>
+        <button
+          className="icon-button overlay-button"
+          onClick={() => void toggleOverlay(true)}
+          title="Компактный плавающий оверлей"
+        >
+          <OverlayIcon size={18} />
         </button>
       </div>
     </footer>

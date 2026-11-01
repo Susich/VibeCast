@@ -88,54 +88,70 @@ export function ConnectModal() {
         <div className="modal-body">
           <section className="discovery-section">
             <div className="section-title">
-              <span>Найдено в сети</span>
+              <span>Устройства поблизости (Auto-Discovery)</span>
               <span className="live-pill">
-                <span className="status-dot live" /> в сети
+                <span className="status-dot live" /> UDP / mDNS
               </span>
             </div>
 
             {devices.length > 0 ? (
               <div className="device-list">
-                {devices.map((device) => (
-                  <button
-                    key={device.id}
-                    className={`device-card ${server?.baseUrl === device.baseUrl ? "current" : ""}`}
-                    onClick={() => {
-                      if (server?.online && server.baseUrl === device.baseUrl) {
-                        close();
-                        return;
-                      }
-                      const alreadyPaired =
-                        server?.hasToken && sameDevice(server.deviceName, device.name);
-                      if (alreadyPaired) {
-                        void connectSaved(device.baseUrl);
-                        return;
-                      }
-                      setUrl(device.baseUrl);
-                      setToken("");
-                      setLocalError(null);
-                      tokenRef.current?.focus();
-                    }}
-                  >
-                    <span className="device-icon">
-                      <SmartphoneIcon size={19} />
-                    </span>
-                    <span className="device-copy">
-                      <b>{device.name}</b>
-                      <small>
-                        {device.host}:{device.port}
-                        {device.tokenRequired ? " · нужен токен" : " · без токена"}
-                      </small>
-                    </span>
-                    {server?.baseUrl === device.baseUrl ? (
-                      <span className="device-current">
-                        <CheckIcon size={14} /> подключён
+                {devices.map((device) => {
+                  const isCurrent = server?.baseUrl === device.baseUrl;
+                  const ping = device.pingMs ?? 5;
+                  const pingClass = ping < 25 ? "fast" : ping < 75 ? "medium" : "slow";
+                  const alreadyPaired =
+                    server?.hasToken && sameDevice(server.deviceName, device.name);
+
+                  return (
+                    <div
+                      key={device.id}
+                      className={`device-card ${isCurrent ? "current" : ""}`}
+                    >
+                      <span className="device-icon">
+                        <SmartphoneIcon size={20} />
                       </span>
-                    ) : (
-                      <span className="device-select">выбрать</span>
-                    )}
-                  </button>
-                ))}
+                      <div className="device-copy">
+                        <div className="device-name-row">
+                          <b>{device.name}</b>
+                          {device.source && (
+                            <span className="device-source-tag">{device.source}</span>
+                          )}
+                        </div>
+                        <small className="device-meta">
+                          <span>{device.host}:{device.port}</span>
+                          <span className={`ping-tag ${pingClass}`} title="Сетевая задержка (пинг)">
+                            <i className="ping-dot" /> {ping} мс
+                          </span>
+                        </small>
+                      </div>
+
+                      {isCurrent ? (
+                        <span className="device-current">
+                          <CheckIcon size={14} /> подключён
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="device-connect-btn"
+                          onClick={() => {
+                            if (alreadyPaired) {
+                              void connectSaved(device.baseUrl);
+                              return;
+                            }
+                            setUrl(device.baseUrl);
+                            setToken("");
+                            setLocalError(null);
+                            tokenRef.current?.focus();
+                          }}
+                          title="Подключиться в один клик"
+                        >
+                          {alreadyPaired ? "Подключить в 1 клик" : "Выбрать"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="radar-empty">
@@ -146,25 +162,25 @@ export function ConnectModal() {
                 </span>
                 <div>
                   <b>Ищем VibeCast рядом</b>
-                  <small>Убедитесь, что телефон и компьютер в одной Wi-Fi сети.</small>
+                  <small>Слушаем UDP broadcast (порт 41234) и mDNS маяки в локальной сети.</small>
                 </div>
               </div>
             )}
           </section>
 
           <div className="divider">
-            <span>или вручную</span>
+            <span>или ручной ввод (IP / Порт / Код комнаты)</span>
           </div>
 
           <form onSubmit={submit} className="connect-form">
             <label className="field">
-              <span>Адрес телефона</span>
+              <span>IP-адрес / Порт или код комнаты</span>
               <div className="input-with-icon">
                 <LinkIcon size={16} />
                 <input
                   value={url}
                   onChange={(event) => onUrlChange(event.target.value)}
-                  placeholder="192.168.1.42:8765"
+                  placeholder="192.168.1.42:8765 или код комнаты"
                   spellCheck={false}
                   autoComplete="off"
                 />

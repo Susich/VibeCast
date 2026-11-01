@@ -3,14 +3,17 @@ import { useEffect, useState } from "react";
 import { call } from "../lib/api";
 import { formatBytes, formatCount } from "../lib/format";
 import { useStore } from "../store";
+import { THEMES } from "../themes";
 import type { CacheStats } from "../lib/types";
-import { DownloadIcon, FolderIcon, ServerIcon, SpinnerIcon, TrashIcon, XIcon, CheckIcon } from "./Icons";
+import { DownloadIcon, FolderIcon, PaletteIcon, ServerIcon, SpinnerIcon, TrashIcon, XIcon, CheckIcon } from "./Icons";
 
 export function SettingsModal() {
   const open = useStore((state) => state.settingsOpen);
   const close = useStore((state) => state.closeSettings);
   const server = useStore((state) => state.server);
   const settings = useStore((state) => state.settings);
+  const theme = useStore((state) => state.theme);
+  const setTheme = useStore((state) => state.setTheme);
   const cachedCount = useStore((state) => state.cachedCount);
   const updateMpvPath = useStore((state) => state.updateMpvPath);
   const clearCache = useStore((state) => state.clearCache);
@@ -77,6 +80,37 @@ export function SettingsModal() {
         </header>
 
         <div className="modal-body settings-body">
+          <section className="settings-section">
+            <div className="section-title">
+              <span>Тема оформления</span>
+              <span className="muted">без перезапуска</span>
+            </div>
+            <div className="theme-grid">
+              {Object.entries(THEMES).map(([id, t]) => {
+                const isSelected = theme === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`theme-card ${isSelected ? "selected" : ""}`}
+                    onClick={() => void setTheme(id)}
+                  >
+                    <div className="theme-preview" style={{ background: t.tokens.bg_primary }}>
+                      <div className="preview-card" style={{ background: t.tokens.bg_card, borderColor: t.tokens.border }}>
+                        <span className="preview-accent" style={{ background: t.tokens.accent }} />
+                        <span className="preview-line" style={{ background: t.tokens.text_muted }} />
+                      </div>
+                    </div>
+                    <div className="theme-info">
+                      <span className="theme-name">{t.name}</span>
+                      {isSelected && <span className="theme-active-tag"><CheckIcon size={12} /> Активна</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
           <section className="settings-section">
             <div className="section-title">
               <span>Воспроизведение</span>

@@ -1,3 +1,4 @@
+mod audio_dsp;
 mod cache;
 mod catalog;
 mod commands;
@@ -60,6 +61,12 @@ pub fn run() {
             commands::open_cache_dir,
             commands::update_settings,
             commands::resync,
+            commands::set_theme,
+            commands::set_overlay_mode,
+            commands::save_overlay_position,
+            commands::start_window_drag,
+            commands::get_overlay_state,
+            commands::get_app_config,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build VibeCast");

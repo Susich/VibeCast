@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::catalog::{self, normalize_base};
 use crate::models::{
-    Bootstrap, CacheStats, Facets, LibraryStats, PlayerState, SearchQuery, SearchResult,
+    AppConfig, Bootstrap, CacheStats, Facets, LibraryStats, OverlayState, PlayerState, SearchQuery, SearchResult,
     ServerSession, ServerView, Settings, Toast,
 };
 use crate::state::AppState;
@@ -319,7 +319,202 @@ pub async fn update_settings(
     if previous != mpv_path {
         state.player.set_mpv_path(mpv_path).await;
     }
+    sync_to_config_json(state.inner());
     Ok(state.settings())
+}
+
+pub fn sync_to_config_json(state: &AppState) {
+    let settings = state.settings();
+    let is_overlay = state
+        .db
+        .get_setting("is_overlay")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let overlay_x = state
+        .db
+        .get_setting("overlay_pos_x")
+        .and_then(|v| v.parse::<i32>().ok());
+    let overlay_y = state
+        .db
+        .get_setting("overlay_pos_y")
+        .and_then(|v| v.parse::<i32>().ok());
+
+    let config = serde_json::json!({
+        "theme": settings.theme,
+        "volume": settings.volume,
+        "mpvPath": settings.mpv_path,
+        "overlay": {
+            "alwaysOnTop": true,
+            "isOverlay": is_overlay,
+            "lastX": overlay_x,
+            "lastY": overlay_y,
+            "width": 380,
+            "height": 140
+        }
+    });
+
+    if let Ok(content) = serde_json::to_string_pretty(&config) {
+        let _ = std::fs::write("config.json", &content);
+        if let Some(app_data) = dirs::data_dir() {
+            let config_dir = app_data.join("com.vibecast.desktop");
+            let _ = std::fs::create_dir_all(&config_dir);
+            let _ = std::fs::write(config_dir.join("config.json"), &content);
+        }
+    }
+}
+
+#[tauri::command]
+pub fn set_theme(state: State<'_, AppState>, theme: String) -> Result<String, String> {
+    let clean_theme = theme.trim().to_lowercase();
+    state.db.set_setting("theme", &clean_theme)?;
+    if let Ok(mut settings) = state.settings.write() {
+        settings.theme = clean_theme.clone();
+    }
+    sync_to_config_json(state.inner());
+    Ok(clean_theme)
+}
+
+#[tauri::command]
+pub fn get_overlay_state(state: State<'_, AppState>) -> OverlayState {
+    let is_overlay = state
+        .db
+        .get_setting("is_overlay")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let x = state
+        .db
+        .get_setting("overlay_pos_x")
+        .and_then(|v| v.parse::<i32>().ok());
+    let y = state
+        .db
+        .get_setting("overlay_pos_y")
+        .and_then(|v| v.parse::<i32>().ok());
+    OverlayState { is_overlay, x, y }
+}
+
+#[tauri::command]
+pub async fn set_overlay_mode(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<OverlayState, String> {
+    if enabled {
+        if let Ok(pos) = window.outer_position() {
+            let _ = state.db.set_setting("full_pos_x", &pos.x.to_string());
+            let _ = state.db.set_setting("full_pos_y", &pos.y.to_string());
+        }
+        if let Ok(size) = window.outer_size() {
+            let _ = state.db.set_setting("full_size_w", &size.width.to_string());
+            let _ = state.db.set_setting("full_size_h", &size.height.to_string());
+        }
+
+        let _ = window.set_decorations(false);
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_resizable(false);
+        let _ = window.set_size(tauri::LogicalSize::new(380.0, 140.0));
+
+        let saved_x = state
+            .db
+            .get_setting("overlay_pos_x")
+            .and_then(|v| v.parse::<i32>().ok());
+        let saved_y = state
+            .db
+            .get_setting("overlay_pos_y")
+            .and_then(|v| v.parse::<i32>().ok());
+        if let (Some(x), Some(y)) = (saved_x, saved_y) {
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+
+        let _ = state.db.set_setting("is_overlay", "true");
+        sync_to_config_json(state.inner());
+
+        Ok(OverlayState {
+            is_overlay: true,
+            x: saved_x,
+            y: saved_y,
+        })
+    } else {
+        if let Ok(pos) = window.outer_position() {
+            let _ = state.db.set_setting("overlay_pos_x", &pos.x.to_string());
+            let _ = state.db.set_setting("overlay_pos_y", &pos.y.to_string());
+        }
+
+        let _ = window.set_always_on_top(false);
+        let _ = window.set_decorations(true);
+        let _ = window.set_resizable(true);
+
+        let full_w = state
+            .db
+            .get_setting("full_size_w")
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(1200.0);
+        let full_h = state
+            .db
+            .get_setting("full_size_h")
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(620.0);
+        let _ = window.set_size(tauri::LogicalSize::new(full_w.max(960.0), full_h.max(560.0)));
+
+        if let (Some(x), Some(y)) = (
+            state
+                .db
+                .get_setting("full_pos_x")
+                .and_then(|v| v.parse::<i32>().ok()),
+            state
+                .db
+                .get_setting("full_pos_y")
+                .and_then(|v| v.parse::<i32>().ok()),
+        ) {
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+
+        let _ = state.db.set_setting("is_overlay", "false");
+        sync_to_config_json(state.inner());
+
+        Ok(OverlayState {
+            is_overlay: false,
+            x: None,
+            y: None,
+        })
+    }
+}
+
+#[tauri::command]
+pub fn save_overlay_position(state: State<'_, AppState>, x: i32, y: i32) -> Result<(), String> {
+    state.db.set_setting("overlay_pos_x", &x.to_string())?;
+    state.db.set_setting("overlay_pos_y", &y.to_string())?;
+    sync_to_config_json(state.inner());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn start_window_drag(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_app_config(state: State<'_, AppState>) -> AppConfig {
+    let settings = state.settings();
+    let is_overlay = state
+        .db
+        .get_setting("is_overlay")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let x = state
+        .db
+        .get_setting("overlay_pos_x")
+        .and_then(|v| v.parse::<i32>().ok());
+    let y = state
+        .db
+        .get_setting("overlay_pos_y")
+        .and_then(|v| v.parse::<i32>().ok());
+
+    AppConfig {
+        theme: settings.theme,
+        volume: settings.volume,
+        mpv_path: settings.mpv_path,
+        overlay: OverlayState { is_overlay, x, y },
+    }
 }
 
 #[tauri::command]

@@ -326,3 +326,45 @@ export function RadioIcon(props: IconProps) {
     ),
   });
 }
+
+export function OverlayIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <rect x="11" y="11" width="8" height="8" rx="1.5" fill="currentColor" opacity="0.3" />
+        <path d="M11 11h8v8h-8z" />
+      </>
+    ),
+  });
+}
+
+export function ExpandIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <polyline points="15 3 21 3 21 9" />
+        <polyline points="9 21 3 21 3 15" />
+        <line x1="21" y1="3" x2="14" y2="10" />
+        <line x1="3" y1="21" x2="10" y2="14" />
+      </>
+    ),
+  });
+}
+
+export function PaletteIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+        <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+        <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+        <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+      </>
+    ),
+  });
+}

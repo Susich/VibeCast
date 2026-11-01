@@ -45,7 +45,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
@@ -72,6 +75,7 @@ class ServerService : Service() {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var mdnsJob: Job? = null
     private var mdnsPort: Int? = null
+    private var udpBeaconJob: Job? = null
     private var started = false
     private var stopped = false
 
@@ -189,6 +193,7 @@ class ServerService : Service() {
             val ip = localIpAddress()
             mdnsPort = port
             publishMdns(port)
+            startUdpBroadcast(port)
             registerMediaObserver()
 
             ServerRuntime.update {
@@ -223,6 +228,8 @@ class ServerService : Service() {
         server = null
         mdnsPort = null
         mdnsJob?.cancel()
+        udpBeaconJob?.cancel()
+        udpBeaconJob = null
         nsdPublisher?.stop()
         nsdPublisher = null
         ServerRuntime.update {
@@ -308,6 +315,39 @@ class ServerService : Service() {
         mdnsJob = null
     }
 
+    private fun startUdpBroadcast(port: Int) {
+        udpBeaconJob?.cancel()
+        udpBeaconJob = scope.launch(Dispatchers.IO) {
+            val deviceModel = Build.MODEL ?: "Android"
+            val beaconPayload =
+                """{"device_name":"$deviceModel","service":"audio_stream","port":$port,"version":"1","token_required":true}"""
+                    .toByteArray(Charsets.UTF_8)
+            var socket: DatagramSocket? = null
+            try {
+                socket = DatagramSocket()
+                socket.broadcast = true
+                val packet = DatagramPacket(
+                    beaconPayload,
+                    beaconPayload.size,
+                    InetAddress.getByName("255.255.255.255"),
+                    41234,
+                )
+                while (started && !stopped) {
+                    try {
+                        socket.send(packet)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "UDP Beacon broadcast error: ${e.message}")
+                    }
+                    delay(3000)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to initialize UDP beacon socket: ${e.message}")
+            } finally {
+                socket?.close()
+            }
+        }
+    }
+
     private fun scheduleRescan(delayMs: Long = 1_500) {
         rescanJob?.cancel()
         rescanJob = scope.launch {
@@ -371,6 +411,8 @@ class ServerService : Service() {
         server = null
         mdnsPort = null
         stopNetworkMonitor()
+        udpBeaconJob?.cancel()
+        udpBeaconJob = null
         nsdPublisher?.stop()
         nsdPublisher = null
         contentObserver?.let { observer ->

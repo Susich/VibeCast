@@ -11,6 +11,7 @@
  * Token: demo-token-123 (override with VIBECAST_TOKEN)
  */
 import { createServer } from "node:http";
+import { createSocket } from "node:dgram";
 import { deflateSync } from "node:zlib";
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8765);
@@ -321,4 +322,30 @@ server.listen(PORT, HOST, () => {
   console.log(`token: ${TOKEN}`);
   console.log(`catalog: ${TRACKS.length} tracks, version ${version}`);
   console.log(`connect URL: http://127.0.0.1:${PORT}/#token=${TOKEN}`);
+
+  // Broadcast discovery beacon over UDP port 41234
+  try {
+    const udp = createSocket({ type: "udp4", reuseAddr: true });
+    udp.bind(() => {
+      udp.setBroadcast(true);
+      const beaconMsg = Buffer.from(
+        JSON.stringify({
+          device_name: "Mock Phone (VibeCast)",
+          service: "audio_stream",
+          port: PORT,
+          version: "1",
+          token_required: true,
+        })
+      );
+      const broadcast = () => {
+        udp.send(beaconMsg, 41234, "255.255.255.255", () => {});
+        udp.send(beaconMsg, 41234, "127.0.0.1", () => {});
+      };
+      broadcast();
+      setInterval(broadcast, 3000);
+      console.log(`broadcasting UDP discovery beacon on port 41234`);
+    });
+  } catch (err) {
+    console.warn(`could not start UDP beacon broadcaster: ${err.message}`);
+  }
 });

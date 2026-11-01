@@ -22,11 +22,15 @@ struct Connection {
 
 pub struct PlayerHandle {
     app: AppHandle,
-    conn: AsyncMutex<Option<Connection>>,
+    conn: Arc<AsyncMutex<Option<Connection>>>,
     state: Arc<Mutex<PlayerState>>,
     last_emit: Arc<Mutex<Instant>>,
     eof_for: Arc<Mutex<Option<String>>>,
     volume: Arc<Mutex<f64>>,
+    target_volume: Arc<AtomicU64>,
+    #[allow(dead_code)]
+    current_volume: Arc<AtomicU64>,
+    volume_tx: mpsc::UnboundedSender<f64>,
     mpv_path: Arc<Mutex<Option<String>>>,
     request_id: AtomicU64,
 }
@@ -36,13 +40,83 @@ impl PlayerHandle {
         let volume = volume.clamp(0.0, 100.0);
         let mut state = PlayerState::default();
         state.volume = volume;
+        let conn: Arc<AsyncMutex<Option<Connection>>> = Arc::new(AsyncMutex::new(None));
+        let (volume_tx, mut volume_rx) = mpsc::unbounded_channel::<f64>();
+        let target_volume = Arc::new(AtomicU64::new(volume.to_bits()));
+        let current_volume = Arc::new(AtomicU64::new(volume.to_bits()));
+
+        // Background volume smoother loop applying exponential lerp (10-20ms window)
+        // to prevent clicks, pops, and IPC floods when volume slider moves rapidly.
+        let smoother_conn = conn.clone();
+        let smoother_target = target_volume.clone();
+        let smoother_current = current_volume.clone();
+        tauri::async_runtime::spawn(async move {
+            while let Some(target) = volume_rx.recv().await {
+                // Drain any additional rapid updates from channel to get latest target immediately
+                let mut latest_target = target;
+                while let Ok(next_target) = volume_rx.try_recv() {
+                    latest_target = next_target;
+                }
+                smoother_target.store(latest_target.to_bits(), Ordering::Relaxed);
+
+                let mut current = f64::from_bits(smoother_current.load(Ordering::Relaxed));
+                let target = latest_target;
+
+                // If already at target, skip
+                if (current - target).abs() < 0.1 {
+                    continue;
+                }
+
+                // 15ms exponential lerp window with 10ms discrete steps
+                let tau: f64 = 0.015 / 3.0;
+                let dt: f64 = 0.010;
+                let alpha: f64 = 1.0 - (-dt / tau).exp();
+
+                while (current - target).abs() >= 0.2 {
+                    let step = (target - current) * alpha;
+                    current += step;
+                    smoother_current.store(current.to_bits(), Ordering::Relaxed);
+
+                    // Send smoothed volume to mpv softvol
+                    let guard = smoother_conn.lock().await;
+                    if let Some(conn) = guard.as_ref() {
+                        let _ = conn.tx.send(json!({
+                            "command": ["set_property", "volume", current]
+                        }));
+                    }
+                    drop(guard);
+
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+
+                    // If target was updated during interpolation, read latest
+                    let fresh_target = f64::from_bits(smoother_target.load(Ordering::Relaxed));
+                    if (fresh_target - target).abs() > 0.05 {
+                        break;
+                    }
+                }
+
+                // Settle cleanly at target
+                let final_target = f64::from_bits(smoother_target.load(Ordering::Relaxed));
+                smoother_current.store(final_target.to_bits(), Ordering::Relaxed);
+                let guard = smoother_conn.lock().await;
+                if let Some(conn) = guard.as_ref() {
+                    let _ = conn.tx.send(json!({
+                        "command": ["set_property", "volume", final_target]
+                    }));
+                }
+            }
+        });
+
         Self {
             app,
-            conn: AsyncMutex::new(None),
+            conn,
             state: Arc::new(Mutex::new(state)),
             last_emit: Arc::new(Mutex::new(Instant::now() - Duration::from_secs(1))),
             eof_for: Arc::new(Mutex::new(None)),
             volume: Arc::new(Mutex::new(volume)),
+            target_volume,
+            current_volume,
+            volume_tx,
             mpv_path: Arc::new(Mutex::new(mpv_path)),
             request_id: AtomicU64::new(1),
         }
@@ -177,11 +251,9 @@ impl PlayerHandle {
         if let Ok(mut stored) = self.volume.lock() {
             *stored = volume;
         }
-        self.send_optional(json!({
-            "command": ["set_property", "volume", volume]
-        }))
-        .await;
-        self.emit_state(true);
+        self.target_volume.store(volume.to_bits(), Ordering::Relaxed);
+        let _ = self.volume_tx.send(volume);
+        self.emit_state(false);
     }
 
     pub async fn shutdown(&self) {
@@ -252,6 +324,7 @@ impl PlayerHandle {
             "--no-video",
             "--gapless-audio=yes",
             "--audio-buffer=0.3",
+            "--softvol=yes",
             "--no-terminal",
             "--force-window=no",
             "--keep-open=no",

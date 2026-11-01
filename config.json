@@ -1,0 +1,12 @@
+{
+  "theme": "cyberpunk",
+  "volume": 80.0,
+  "mpvPath": null,
+  "overlay": {
+    "alwaysOnTop": true,
+    "lastX": null,
+    "lastY": null,
+    "width": 380,
+    "height": 140
+  }
+}
