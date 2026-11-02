@@ -15,6 +15,16 @@ data class ScanOutcome(
     val changed: Boolean,
 )
 
+enum class TrackSort(val title: String) {
+    TITLE_ASC("По названию (А-Я)"),
+    TITLE_DESC("По названию (Я-А)"),
+    ARTIST_ASC("По артисту"),
+    DURATION_DESC("Сначала длинные"),
+    DURATION_ASC("Сначала короткие"),
+    DATE_DESC("Сначала новые"),
+    DATE_ASC("Сначала старые"),
+}
+
 /**
  * Каталог в памяти. Версия монотонно растёт при изменении множества треков.
  * Чтение из HTTP-сервера потокобезопасно за счёт immutable snapshot.
@@ -38,8 +48,20 @@ class CatalogRepository(
     val version: Long get() = _version.value
     val trackCount: Int get() = _trackCount.value
 
+    suspend fun getAvailableFolders(): List<FolderInfo> = withContext(Dispatchers.IO) {
+        scanner.scanFolders()
+    }
+
+    fun getSelectedFolders(): Set<String> = tokenStore.getSelectedFolders()
+
+    suspend fun setSelectedFolders(folders: Set<String>): ScanOutcome {
+        tokenStore.setSelectedFolders(folders)
+        return rescan()
+    }
+
     suspend fun rescan(): ScanOutcome = withContext(Dispatchers.IO) {
-        val scanned = scanner.scan()
+        val selected = tokenStore.getSelectedFolders()
+        val scanned = scanner.scan(if (selected.isNotEmpty()) selected else null)
         val oldIds = entries.asSequence().map { it.track.id }.toHashSet()
         val newIds = scanned.asSequence().map { it.track.id }.toHashSet()
         val changed = oldIds != newIds
@@ -58,25 +80,53 @@ class CatalogRepository(
 
     fun find(id: String): MediaEntry? = entriesById[id]
 
-    fun page(offset: Int, limit: Int, query: String?): TrackPage {
+    fun page(
+        offset: Int,
+        limit: Int,
+        query: String?,
+        sort: TrackSort = TrackSort.TITLE_ASC,
+    ): TrackPage {
         val snapshot = entries
-        if (query.isNullOrBlank()) {
-            return TrackPage(
-                tracks = snapshot.drop(offset).take(limit).map { it.track },
-                total = snapshot.size,
-            )
+        var sequence = snapshot.asSequence()
+        if (!query.isNullOrBlank()) {
+            val needle = query.lowercase(Locale.ROOT)
+            sequence = sequence.filter { entry ->
+                val t: TrackDto = entry.track
+                t.title.lowercase(Locale.ROOT).contains(needle) ||
+                    t.artist.lowercase(Locale.ROOT).contains(needle) ||
+                    t.album.lowercase(Locale.ROOT).contains(needle) ||
+                    t.albumArtist?.lowercase(Locale.ROOT)?.contains(needle) == true
+            }
         }
-        val needle = query.lowercase(Locale.ROOT)
-        val filtered = snapshot.filter { entry ->
-            val t: TrackDto = entry.track
-            t.title.lowercase(Locale.ROOT).contains(needle) ||
-                t.artist.lowercase(Locale.ROOT).contains(needle) ||
-                t.album.lowercase(Locale.ROOT).contains(needle) ||
-                t.albumArtist?.lowercase(Locale.ROOT)?.contains(needle) == true
-        }
+
+        val sorted = when (sort) {
+            TrackSort.TITLE_ASC -> sequence.sortedWith { a, b ->
+                String.CASE_INSENSITIVE_ORDER.compare(a.track.title, b.track.title)
+            }
+            TrackSort.TITLE_DESC -> sequence.sortedWith { a, b ->
+                String.CASE_INSENSITIVE_ORDER.compare(b.track.title, a.track.title)
+            }
+            TrackSort.ARTIST_ASC -> sequence.sortedWith { a, b ->
+                val cmp = String.CASE_INSENSITIVE_ORDER.compare(a.track.artist, b.track.artist)
+                if (cmp != 0) cmp else String.CASE_INSENSITIVE_ORDER.compare(a.track.title, b.track.title)
+            }
+            TrackSort.DURATION_DESC -> sequence.sortedWith { a, b ->
+                b.track.durationMs.compareTo(a.track.durationMs)
+            }
+            TrackSort.DURATION_ASC -> sequence.sortedWith { a, b ->
+                a.track.durationMs.compareTo(b.track.durationMs)
+            }
+            TrackSort.DATE_DESC -> sequence.sortedWith { a, b ->
+                b.track.dateModified.compareTo(a.track.dateModified)
+            }
+            TrackSort.DATE_ASC -> sequence.sortedWith { a, b ->
+                a.track.dateModified.compareTo(b.track.dateModified)
+            }
+        }.toList()
+
         return TrackPage(
-            tracks = filtered.drop(offset).take(limit).map { it.track },
-            total = filtered.size,
+            tracks = sorted.drop(offset).take(limit).map { it.track },
+            total = sorted.size,
         )
     }
 }

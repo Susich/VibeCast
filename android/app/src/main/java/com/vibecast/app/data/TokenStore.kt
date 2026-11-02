@@ -30,6 +30,14 @@ class TokenStore(context: Context) {
             prefs.edit().putLong(KEY_VERSION, value).apply()
         }
 
+    fun getSelectedFolders(): Set<String> = synchronized(lock) {
+        prefs.getStringSet(KEY_SELECTED_FOLDERS, emptySet()) ?: emptySet()
+    }
+
+    fun setSelectedFolders(folders: Set<String>) = synchronized(lock) {
+        prefs.edit().putStringSet(KEY_SELECTED_FOLDERS, folders).apply()
+    }
+
     private fun createPrefs(): SharedPreferences {
         return try {
             val masterKey = MasterKey.Builder(appContext)
@@ -60,6 +68,7 @@ class TokenStore(context: Context) {
         private const val FILE_FALLBACK = "vibecast_private"
         private const val KEY_TOKEN = "bearer_token"
         private const val KEY_VERSION = "catalog_version"
+        private const val KEY_SELECTED_FOLDERS = "selected_music_folders"
         private const val TOKEN_BYTES = 32
         const val DEFAULT_PORT = 8765
     }

@@ -42,7 +42,8 @@ class NsdPublisher(
     private fun register() {
         if (!active) return
         val manager = nsdManager ?: run {
-            onFailure("mDNS недоступен на устройстве")
+            Log.w(TAG, "mDNS: NsdManager недоступен на данном устройстве")
+            onFailure("mDNS недоступен")
             return
         }
 
@@ -100,7 +101,8 @@ class NsdPublisher(
             val delayMs = RETRY_DELAY_MS * attempts
             mainHandler.postDelayed({ register() }, delayMs)
         } else {
-            onFailure("mDNS недоступен — подключитесь по URL вручную")
+            Log.w(TAG, "mDNS: регистрация не удалась после $MAX_ATTEMPTS попыток")
+            onFailure("mDNS недоступен")
         }
     }
 

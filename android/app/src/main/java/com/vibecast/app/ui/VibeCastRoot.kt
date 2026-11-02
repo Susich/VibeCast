@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,12 +32,45 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.automirrored.rounded.VolumeMute
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.QrCode2
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Sensors
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Update
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -48,12 +82,12 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,6 +99,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -78,12 +113,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vibecast.app.BuildConfig
 import com.vibecast.app.data.AppUpdateInfo
 import com.vibecast.app.data.CoverStore
+import com.vibecast.app.data.FolderInfo
+import com.vibecast.app.data.TrackSort
 import com.vibecast.app.data.UpdateManager
 import com.vibecast.app.service.ServerRuntime
 import com.vibecast.app.service.ServerService
 import com.vibecast.app.ui.theme.VibeAmber
 import com.vibecast.app.ui.theme.VibeBg
 import com.vibecast.app.ui.theme.VibeGreen
+import com.vibecast.app.ui.theme.VibeGreenDark
 import com.vibecast.app.ui.theme.VibeMuted
 import com.vibecast.app.ui.theme.VibeRed
 import com.vibecast.app.ui.theme.VibeSurface
@@ -96,10 +134,10 @@ import com.vibecast.shared.TrackDto
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class NavTab(val title: String) {
-    PLAYER("Плеер"),
-    SERVER("Сервер"),
-    SHARE("Поделиться"),
+private enum class NavTab(val title: String, val icon: ImageVector) {
+    PLAYER("Пульт", Icons.Rounded.Headphones),
+    SERVER("Сервер", Icons.Rounded.Sensors),
+    SHARE("Поделиться", Icons.Rounded.Share),
 }
 
 @Composable
@@ -140,7 +178,11 @@ fun VibeCastRoot() {
                     )
                 },
             ) { padding ->
-                Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .padding(padding)
+                        .fillMaxSize(),
+                ) {
                     when (selectedTab) {
                         NavTab.PLAYER -> RemotePlayerScreen(
                             onNavigateToServer = { selectedTab = NavTab.SERVER },
@@ -177,21 +219,18 @@ private fun VibeBottomNav(
                 selected = isSelected,
                 onClick = { onTabSelected(tab) },
                 icon = {
-                    Text(
-                        when (tab) {
-                            NavTab.PLAYER -> "▶"
-                            NavTab.SERVER -> "⇄"
-                            NavTab.SHARE -> "🔗"
-                        },
-                        fontSize = 18.sp,
-                        color = if (isSelected) VibeGreen else VibeMuted,
+                    Icon(
+                        imageVector = tab.icon,
+                        contentDescription = tab.title,
+                        modifier = Modifier.size(22.dp),
+                        tint = if (isSelected) VibeGreen else VibeMuted,
                     )
                 },
                 label = {
                     Text(
                         tab.title,
                         color = if (isSelected) VibeGreen else VibeMuted,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         fontSize = 12.sp,
                     )
                 },
@@ -207,32 +246,79 @@ private fun VibeBottomNav(
 private fun RemotePlayerScreen(
     onNavigateToServer: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val playerState by ServerRuntime.playerState.collectAsStateWithLifecycle(initialValue = null)
+    val runtimeState by ServerRuntime.state.collectAsStateWithLifecycle()
+
     var searchQuery by remember { mutableStateOf("") }
+    var currentSort by remember { mutableStateOf(TrackSort.TITLE_ASC) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showFolderDialog by remember { mutableStateOf(false) }
+
     val repo = ServerRuntime.repository
-    val tracks = remember(searchQuery, repo, ServerRuntime.current().version) {
-        repo?.page(0, 100, searchQuery)?.tracks ?: emptyList()
+    val tracks = remember(searchQuery, currentSort, repo, runtimeState.version, runtimeState.trackCount) {
+        repo?.page(0, 150, searchQuery, currentSort)?.tracks ?: emptyList()
+    }
+
+    val selectedFolders = remember(runtimeState.version) {
+        repo?.getSelectedFolders() ?: emptySet()
+    }
+
+    if (showFolderDialog && repo != null) {
+        FolderSelectionDialog(
+            repo = repo,
+            onDismiss = { showFolderDialog = false },
+            onApply = { folders ->
+                showFolderDialog = false
+                scope.launch {
+                    repo.setSelectedFolders(folders)
+                    ServerService.rescan(context)
+                }
+            },
+        )
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 18.dp),
     ) {
         item {
-            Spacer(Modifier.height(24.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(20.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(40.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
+                        .background(
+                            Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE))),
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("▶", color = Color(0xFF06210F), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = Icons.Rounded.Headphones,
+                        contentDescription = "Пульт",
+                        tint = Color(0xFF06210F),
+                        modifier = Modifier.size(24.dp),
+                    )
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("Пульт управления ПК", color = VibeText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("Управление воспроизведением через Wi-Fi", color = VibeMuted, fontSize = 12.sp)
+                    Text(
+                        "Пульт управления ПК",
+                        color = VibeText,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "Воспроизведение музыки на компьютере по Wi-Fi",
+                        color = VibeMuted,
+                        fontSize = 12.sp,
+                    )
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -241,36 +327,180 @@ private fun RemotePlayerScreen(
         // Now Playing Card
         item {
             NowPlayingCard(player = playerState, onNavigateToServer = onNavigateToServer)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(22.dp))
         }
 
-        // Quick Track Library
+        // Library Header & Filter Controls
         item {
-            Text("Библиотека на телефоне", color = VibeText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Нажмите на любой трек, чтобы включить его на компьютере",
-                color = VibeMuted,
-                fontSize = 12.sp,
-            )
-            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        "Медиатека на телефоне",
+                        color = VibeText,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "Треков: ${runtimeState.trackCount}",
+                        color = VibeMuted,
+                        fontSize = 12.sp,
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Folder Selector Button
+                    Button(
+                        onClick = { showFolderDialog = true },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedFolders.isNotEmpty()) VibeGreenDark else VibeSurfaceHigh,
+                            contentColor = if (selectedFolders.isNotEmpty()) Color.White else VibeText,
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.height(34.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Folder,
+                            contentDescription = "Папки",
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (selectedFolders.isEmpty()) "Папки" else "Папки (${selectedFolders.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+
+                    // Sort Filter Button
+                    Box {
+                        Button(
+                            onClick = { showSortMenu = true },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = VibeSurfaceHigh,
+                                contentColor = VibeText,
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.height(34.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Sort,
+                                contentDescription = "Сортировка",
+                                modifier = Modifier.size(16.dp),
+                                tint = VibeGreen,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Фильтр",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false },
+                            modifier = Modifier.background(VibeSurfaceHigh),
+                        ) {
+                            TrackSort.values().forEach { sort ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (currentSort == sort) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Check,
+                                                    contentDescription = null,
+                                                    tint = VibeGreen,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            } else {
+                                                Spacer(Modifier.width(24.dp))
+                                            }
+                                            Text(
+                                                sort.title,
+                                                color = if (currentSort == sort) VibeGreen else VibeText,
+                                                fontSize = 13.sp,
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        currentSort = sort
+                                        showSortMenu = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+
+            // Search Bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Поиск трека или исполнителя…", color = VibeMuted) },
+                placeholder = { Text("Поиск трека, артиста или альбома…", color = VibeMuted, fontSize = 13.sp) },
                 singleLine = true,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = "Поиск",
+                        tint = VibeMuted,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Очистить",
+                                tint = VibeMuted,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = VibeGreen,
-                    unfocusedBorderColor = Color(0xFF2A3542),
+                    unfocusedBorderColor = Color(0xFF263342),
                     focusedContainerColor = VibeSurface,
                     unfocusedContainerColor = VibeSurface,
                     focusedTextColor = VibeText,
                     unfocusedTextColor = VibeText,
                 ),
             )
-            Spacer(Modifier.height(14.dp))
+
+            // Current Active Filter Tag
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Сортировка: ${currentSort.title}",
+                    color = VibeMuted,
+                    fontSize = 11.sp,
+                )
+                if (selectedFolders.isNotEmpty()) {
+                    Text(
+                        " • Фильтр по ${selectedFolders.size} папкам",
+                        color = VibeGreen,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
         }
 
         if (tracks.isEmpty()) {
@@ -278,15 +508,30 @@ private fun RemotePlayerScreen(
                 Card(
                     colors = CardDefaults.cardColors(containerColor = VibeSurface),
                     shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
                 ) {
-                    Text(
-                        "Треки не найдены",
-                        color = VibeMuted,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(20.dp),
-                        textAlign = TextAlign.Center,
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = VibeMuted,
+                            modifier = Modifier.size(36.dp),
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            if (searchQuery.isNotBlank()) "По запросу «$searchQuery» ничего не найдено" else "В выбранных папках нет аудиофайлов",
+                            color = VibeMuted,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
         } else {
@@ -302,7 +547,7 @@ private fun RemotePlayerScreen(
         }
 
         item {
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(36.dp))
         }
     }
 }
@@ -320,7 +565,9 @@ private fun NowPlayingCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = VibeSurface),
         shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFF223040), RoundedCornerShape(24.dp)),
     ) {
         Column(Modifier.padding(20.dp)) {
             if (player?.currentTrackId != null) {
@@ -340,7 +587,12 @@ private fun NowPlayingCard(
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
-                            Text("♪", color = VibeMuted, fontSize = 32.sp)
+                            Icon(
+                                imageVector = Icons.Rounded.MusicNote,
+                                contentDescription = "Музыка",
+                                tint = VibeMuted,
+                                modifier = Modifier.size(36.dp),
+                            )
                         }
                     }
 
@@ -430,19 +682,30 @@ private fun NowPlayingCard(
 
                 Spacer(Modifier.height(10.dp))
 
-                // Playback Controls Row
+                // Playback Controls Row (Pure Vector Icons, NO EMOJIS)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ControlButton(text = "⏮", size = 48.dp, fontSize = 20.sp) {
-                        ServerRuntime.sendCommand(RemoteCommandDto(action = "prev"))
+                    IconButton(
+                        onClick = { ServerRuntime.sendCommand(RemoteCommandDto(action = "prev")) },
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(VibeSurfaceHigh),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SkipPrevious,
+                            contentDescription = "Предыдущий",
+                            tint = VibeText,
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(62.dp)
+                            .size(64.dp)
                             .clip(CircleShape)
                             .background(VibeGreen)
                             .clickable {
@@ -450,16 +713,27 @@ private fun NowPlayingCard(
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = if (player.paused) "▶" else "⏸",
-                            color = Color(0xFF06210F),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
+                        Icon(
+                            imageVector = if (player.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                            contentDescription = if (player.paused) "Воспроизведение" else "Пауза",
+                            tint = Color(0xFF06210F),
+                            modifier = Modifier.size(34.dp),
                         )
                     }
 
-                    ControlButton(text = "⏭", size = 48.dp, fontSize = 20.sp) {
-                        ServerRuntime.sendCommand(RemoteCommandDto(action = "next"))
+                    IconButton(
+                        onClick = { ServerRuntime.sendCommand(RemoteCommandDto(action = "next")) },
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(VibeSurfaceHigh),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SkipNext,
+                            contentDescription = "Следующий",
+                            tint = VibeText,
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
                 }
 
@@ -467,10 +741,15 @@ private fun NowPlayingCard(
                 HorizontalDivider(color = Color(0xFF223040))
                 Spacer(Modifier.height(14.dp))
 
-                // Volume Slider
+                // Volume Slider (Vector Icons, NO EMOJIS)
                 var volumeValue by remember(player.volume) { mutableFloatStateOf(player.volume.toFloat()) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🔊", fontSize = 16.sp)
+                    Icon(
+                        imageVector = if (volumeValue <= 0) Icons.AutoMirrored.Rounded.VolumeMute else Icons.AutoMirrored.Rounded.VolumeUp,
+                        contentDescription = "Громкость",
+                        tint = VibeMuted,
+                        modifier = Modifier.size(20.dp),
+                    )
                     Spacer(Modifier.width(10.dp))
                     Slider(
                         value = volumeValue.coerceIn(0f, 100f),
@@ -491,13 +770,15 @@ private fun NowPlayingCard(
                         "${volumeValue.toInt()}%",
                         color = VibeMuted,
                         fontSize = 12.sp,
-                        modifier = Modifier.width(36.dp),
+                        modifier = Modifier.width(38.dp),
                     )
                 }
             } else {
                 // Waiting / Empty State
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(
@@ -507,7 +788,12 @@ private fun NowPlayingCard(
                             .background(VibeSurfaceHigh),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("⇄", color = VibeMuted, fontSize = 28.sp)
+                        Icon(
+                            imageVector = Icons.Rounded.Headphones,
+                            contentDescription = null,
+                            tint = VibeMuted,
+                            modifier = Modifier.size(28.dp),
+                        )
                     }
                     Spacer(Modifier.height(14.dp))
                     Text(
@@ -529,30 +815,18 @@ private fun NowPlayingCard(
                         onClick = onNavigateToServer,
                         shape = RoundedCornerShape(12.dp),
                     ) {
-                        Text("Показать адрес и токен для ПК", color = VibeGreen)
+                        Icon(
+                            imageVector = Icons.Rounded.Sensors,
+                            contentDescription = null,
+                            tint = VibeGreen,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Показать адрес сервера и токен", color = VibeGreen, fontSize = 13.sp)
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun ControlButton(
-    text: String,
-    size: androidx.compose.ui.unit.Dp,
-    fontSize: androidx.compose.ui.unit.TextUnit,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(VibeSurfaceHigh)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = text, color = VibeText, fontSize = fontSize, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -583,10 +857,11 @@ private fun TrackItem(
                     .background(if (isPlaying) VibeGreen.copy(alpha = 0.2f) else Color(0xFF1E2836)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = if (isPlaying) "▶" else "♪",
-                    color = if (isPlaying) VibeGreen else VibeMuted,
-                    fontSize = 18.sp,
+                Icon(
+                    imageVector = if (isPlaying) Icons.Rounded.PlayArrow else Icons.Rounded.MusicNote,
+                    contentDescription = null,
+                    tint = if (isPlaying) VibeGreen else VibeMuted,
+                    modifier = Modifier.size(20.dp),
                 )
             }
             Spacer(Modifier.width(12.dp))
@@ -616,6 +891,155 @@ private fun TrackItem(
             )
         }
     }
+}
+
+/** Диалог выбора папок для загрузки музыки. */
+@Composable
+private fun FolderSelectionDialog(
+    repo: com.vibecast.app.data.CatalogRepository,
+    onDismiss: () -> Unit,
+    onApply: (Set<String>) -> Unit,
+) {
+    var availableFolders by remember { mutableStateOf<List<FolderInfo>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    val initialSelected = remember { repo.getSelectedFolders() }
+    val selected = remember { mutableStateListOf<String>().apply { addAll(initialSelected) } }
+
+    LaunchedEffect(Unit) {
+        availableFolders = repo.getAvailableFolders()
+        loading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VibeSurface,
+        shape = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.FolderOpen,
+                    contentDescription = null,
+                    tint = VibeGreen,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text("Папки с музыкой", color = VibeText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Выберите папки, из которых VibeCast будет загружать аудиофайлы. Если ни одна не выбрана — сканируются все папки.",
+                    color = VibeMuted,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    TextButton(
+                        onClick = {
+                            selected.clear()
+                            selected.addAll(availableFolders.map { it.path })
+                        },
+                    ) {
+                        Text("Выбрать все", color = VibeGreen, fontSize = 12.sp)
+                    }
+
+                    TextButton(
+                        onClick = { selected.clear() },
+                    ) {
+                        Text("Снять все (все папки)", color = VibeMuted, fontSize = 12.sp)
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFF263342), modifier = Modifier.padding(vertical = 6.dp))
+
+                if (loading) {
+                    Box(modifier = Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = VibeGreen, modifier = Modifier.size(32.dp))
+                    }
+                } else if (availableFolders.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) {
+                        Text("Папки с аудиофайлами не найдены", color = VibeMuted, fontSize = 13.sp)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
+                        items(availableFolders) { folder ->
+                            val isChecked = selected.contains(folder.path) || selected.contains(folder.name)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        if (isChecked) {
+                                            selected.remove(folder.path)
+                                            selected.remove(folder.name)
+                                        } else {
+                                            selected.add(folder.path)
+                                        }
+                                    }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { checked ->
+                                        if (checked) {
+                                            selected.add(folder.path)
+                                        } else {
+                                            selected.remove(folder.path)
+                                            selected.remove(folder.name)
+                                        }
+                                    },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = VibeGreen,
+                                        checkmarkColor = Color(0xFF06210F),
+                                        uncheckedColor = VibeMuted,
+                                    ),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        folder.name,
+                                        color = VibeText,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        "${folder.count} треков",
+                                        color = VibeMuted,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onApply(selected.toSet()) },
+                colors = ButtonDefaults.buttonColors(containerColor = VibeGreen),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Text("Применить", color = Color(0xFF06210F), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Text("Отмена", color = VibeText)
+            }
+        },
+    )
 }
 
 @Composable
@@ -650,12 +1074,17 @@ private fun ShareAndUpdatesScreen() {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("🔗", fontSize = 18.sp)
+                Icon(
+                    imageVector = Icons.Rounded.Share,
+                    contentDescription = null,
+                    tint = Color(0xFF06210F),
+                    modifier = Modifier.size(22.dp),
+                )
             }
             Spacer(Modifier.width(12.dp))
             Column {
@@ -670,7 +1099,9 @@ private fun ShareAndUpdatesScreen() {
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
             shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF223040), RoundedCornerShape(24.dp)),
         ) {
             Column(
                 modifier = Modifier.padding(22.dp),
@@ -735,6 +1166,13 @@ private fun ShareAndUpdatesScreen() {
                         colors = ButtonDefaults.buttonColors(containerColor = VibeSurfaceHigh),
                         shape = RoundedCornerShape(12.dp),
                     ) {
+                        Icon(
+                            imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                            contentDescription = null,
+                            tint = if (copied) VibeGreen else VibeText,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
                         Text(if (copied) "Скопировано!" else "Копировать", color = VibeText, fontSize = 13.sp)
                     }
 
@@ -754,6 +1192,13 @@ private fun ShareAndUpdatesScreen() {
                         colors = ButtonDefaults.buttonColors(containerColor = VibeGreen),
                         shape = RoundedCornerShape(12.dp),
                     ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Share,
+                            contentDescription = null,
+                            tint = Color(0xFF06210F),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
                         Text("Поделиться", color = Color(0xFF06210F), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
@@ -766,11 +1211,18 @@ private fun ShareAndUpdatesScreen() {
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
             shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF223040), RoundedCornerShape(22.dp)),
         ) {
             Column(Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🔄", fontSize = 18.sp)
+                    Icon(
+                        imageVector = Icons.Rounded.Update,
+                        contentDescription = null,
+                        tint = VibeGreen,
+                        modifier = Modifier.size(24.dp),
+                    )
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text("Обновления приложения", color = VibeText, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
@@ -796,11 +1248,20 @@ private fun ShareAndUpdatesScreen() {
                     colors = ButtonDefaults.buttonColors(containerColor = VibeSurfaceHigh),
                     shape = RoundedCornerShape(12.dp),
                 ) {
-                    Text(
-                        if (checkingUpdate) "Проверяю обновления…" else "Проверить обновления",
-                        color = VibeGreen,
-                        fontWeight = FontWeight.Medium,
-                    )
+                    if (checkingUpdate) {
+                        CircularProgressIndicator(color = VibeGreen, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("Проверяю обновления…", color = VibeGreen, fontSize = 13.sp)
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = null,
+                            tint = VibeGreen,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Проверить обновления", color = VibeGreen, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    }
                 }
 
                 if (updateError != null) {
@@ -818,12 +1279,21 @@ private fun ShareAndUpdatesScreen() {
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Column(Modifier.padding(14.dp)) {
-                                Text(
-                                    "Доступна новая версия: v${res.latestVersion}!",
-                                    color = VibeGreen,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SystemUpdate,
+                                        contentDescription = null,
+                                        tint = VibeGreen,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Доступна новая версия: v${res.latestVersion}!",
+                                        color = VibeGreen,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                    )
+                                }
                                 if (!res.releaseNotes.isNullOrBlank()) {
                                     Spacer(Modifier.height(6.dp))
                                     Text(
@@ -893,7 +1363,12 @@ private fun PermissionScreen(onRequest: () -> Unit, onOpenSettings: () -> Unit) 
                 .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
             contentAlignment = Alignment.Center,
         ) {
-            Text("▶", color = Color(0xFF06210F), fontSize = 38.sp, fontWeight = FontWeight.Bold)
+            Icon(
+                imageVector = Icons.Rounded.Headphones,
+                contentDescription = null,
+                tint = Color(0xFF06210F),
+                modifier = Modifier.size(46.dp),
+            )
         }
         Spacer(Modifier.height(28.dp))
         Text(
@@ -913,7 +1388,7 @@ private fun PermissionScreen(onRequest: () -> Unit, onOpenSettings: () -> Unit) 
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
             shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF223040), RoundedCornerShape(24.dp)),
         ) {
             Column(Modifier.padding(22.dp)) {
                 Text("Нужен доступ к аудио", color = VibeText, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
@@ -925,8 +1400,8 @@ private fun PermissionScreen(onRequest: () -> Unit, onOpenSettings: () -> Unit) 
                     fontSize = 14.sp,
                 )
                 Spacer(Modifier.height(14.dp))
-                Bullet("Доступ к аудиотеке")
-                if (Build.VERSION.SDK_INT >= 33) Bullet("Уведомления — для статуса раздачи")
+                Bullet("Доступ к аудиотеке устройства")
+                if (Build.VERSION.SDK_INT >= 33) Bullet("Уведомления для отображения статуса раздачи")
                 Spacer(Modifier.height(22.dp))
                 Button(
                     onClick = onRequest,
@@ -948,7 +1423,7 @@ private fun PermissionScreen(onRequest: () -> Unit, onOpenSettings: () -> Unit) 
         }
         Spacer(Modifier.height(24.dp))
         Text(
-            "Совет: телефон и ПК должны быть в одной Wi-Fi сети.",
+            "Совет: телефон и ПК должны быть подключены к одной Wi-Fi сети.",
             color = VibeMuted,
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
@@ -958,8 +1433,13 @@ private fun PermissionScreen(onRequest: () -> Unit, onOpenSettings: () -> Unit) 
 
 @Composable
 private fun Bullet(text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 3.dp)) {
-        Box(Modifier.size(6.dp).clip(CircleShape).background(VibeGreen))
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+        Icon(
+            imageVector = Icons.Rounded.CheckCircle,
+            contentDescription = null,
+            tint = VibeGreen,
+            modifier = Modifier.size(16.dp),
+        )
         Spacer(Modifier.width(10.dp))
         Text(text, color = VibeMuted, fontSize = 13.sp)
     }
@@ -990,12 +1470,17 @@ private fun StatusScreen(
                     .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("▶", color = Color(0xFF06210F), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.Rounded.Sensors,
+                    contentDescription = null,
+                    tint = Color(0xFF06210F),
+                    modifier = Modifier.size(24.dp),
+                )
             }
             Spacer(Modifier.width(12.dp))
             Column {
-                Text("VibeCast", color = VibeText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("Сервер библиотеки для ПК", color = VibeMuted, fontSize = 12.sp)
+                Text("VibeCast Сервер", color = VibeText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text("Раздача медиатеки для приложения на ПК", color = VibeMuted, fontSize = 12.sp)
             }
         }
 
@@ -1026,7 +1511,7 @@ private fun StatusScreen(
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
             shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF223040), RoundedCornerShape(20.dp)),
         ) {
             Column(Modifier.padding(18.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1051,8 +1536,15 @@ private fun StatusScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = VibeSurfaceHigh),
                         shape = RoundedCornerShape(12.dp),
                     ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = null,
+                            tint = VibeText,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
                         Text(
-                            if (state.scanning) "Сканирую…" else "Пересканировать",
+                            if (state.scanning) "Сканирую…" else "Обновить",
                             color = VibeText,
                         )
                     }
@@ -1063,11 +1555,18 @@ private fun StatusScreen(
                     modifier = Modifier.fillMaxWidth().height(46.dp),
                     shape = RoundedCornerShape(12.dp),
                 ) {
+                    Icon(
+                        imageVector = Icons.Rounded.BatteryChargingFull,
+                        contentDescription = null,
+                        tint = VibeText,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Text("Разрешить работу в фоне", color = VibeText)
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Отключите оптимизацию батареи, чтобы сервер переживал выключенный экран.",
+                    "Отключите оптимизацию батареи для VibeCast, чтобы сервер не усыплялся при выключенном экране телефона.",
                     color = VibeMuted,
                     fontSize = 12.sp,
                 )
@@ -1078,7 +1577,7 @@ private fun StatusScreen(
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
             shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF223040), RoundedCornerShape(20.dp)),
         ) {
             Column(Modifier.padding(18.dp)) {
                 Text("Подключение с ПК", color = VibeText, fontWeight = FontWeight.SemiBold)
@@ -1096,8 +1595,8 @@ private fun StatusScreen(
                 Text("Статус фоновой работы", color = VibeMuted, fontSize = 12.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Сервер живёт в foreground-сервисе с WakeLock и WifiLock. " +
-                        "Уведомление «VibeCast раздаёт библиотеку» должно оставаться в шторке.",
+                    "Сервер работает в Foreground Service с блокировкой сна (WakeLock & WifiLock). " +
+                        "Уведомление «VibeCast раздаёт библиотеку» должно оставаться в системной шторке.",
                     color = VibeMuted,
                     fontSize = 12.sp,
                 )
@@ -1110,6 +1609,11 @@ private fun StatusScreen(
 
 @Composable
 private fun StatusCard(state: ServerRuntime.State) {
+    val repo = ServerRuntime.repository
+    val selectedFoldersCount = remember(state.version) {
+        repo?.getSelectedFolders()?.size ?: 0
+    }
+
     val statusColor = when {
         state.error != null -> VibeRed
         state.running -> VibeGreen
@@ -1126,7 +1630,9 @@ private fun StatusCard(state: ServerRuntime.State) {
     Card(
         colors = CardDefaults.cardColors(containerColor = VibeSurface),
         shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFF223040), RoundedCornerShape(24.dp)),
     ) {
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1138,7 +1644,8 @@ private fun StatusCard(state: ServerRuntime.State) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Metric("Адрес", if (state.running && state.ip != null) "${state.ip}:${state.port}" else "—")
                 Metric("Треков", if (state.trackCount > 0) state.trackCount.toString() else "—")
-                Metric("Версия", if (state.version > 0) "#${state.version}" else "—")
+                Metric("Папки", if (selectedFoldersCount > 0) "$selectedFoldersCount выбрано" else "Все")
+                Metric("Каталог", if (state.version > 0) "#${state.version}" else "—")
             }
             if (state.token.isNotBlank()) {
                 Spacer(Modifier.height(18.dp))
@@ -1153,7 +1660,7 @@ private fun Metric(label: String, value: String) {
     Column {
         Text(label, color = VibeMuted, fontSize = 11.sp)
         Spacer(Modifier.height(4.dp))
-        Text(value, color = VibeText, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(value, color = VibeText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -1216,7 +1723,9 @@ private fun ConnectionCard(state: ServerRuntime.State) {
     Card(
         colors = CardDefaults.cardColors(containerColor = VibeSurface),
         shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFF223040), RoundedCornerShape(20.dp)),
     ) {
         Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1227,7 +1736,12 @@ private fun ConnectionCard(state: ServerRuntime.State) {
                         .background(VibeGreen.copy(alpha = 0.16f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("⇄", color = VibeGreen, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = Icons.Rounded.Sensors,
+                        contentDescription = null,
+                        tint = VibeGreen,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
                 Spacer(Modifier.width(10.dp))
                 Column {
@@ -1263,8 +1777,15 @@ private fun ConnectionCard(state: ServerRuntime.State) {
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().height(46.dp),
             ) {
+                Icon(
+                    imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                    contentDescription = null,
+                    tint = Color(0xFF06210F),
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    if (copied) "Ссылка скопирована" else "Копировать ссылку с токеном",
+                    if (copied) "Ссылка скопирована!" else "Копировать ссылку с токеном",
                     color = Color(0xFF06210F),
                     fontWeight = FontWeight.Bold,
                 )

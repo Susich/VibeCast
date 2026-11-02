@@ -255,25 +255,16 @@ class ServerService : Service() {
             port = port,
             token = tokenStore.token(),
             onFailure = { message ->
-                ServerRuntime.update { it.copy(warning = message) }
+                Log.w(TAG, "mDNS: $message. Клиенты найдут сервер через LAN-скан или прямой адрес.")
             },
             onRegistered = {
-                ServerRuntime.update { state ->
-                    if (state.warning?.startsWith("mDNS") == true) {
-                        state.copy(warning = null)
-                    } else {
-                        state
-                    }
-                }
+                Log.i(TAG, "mDNS успешно зарегистрирован")
             },
         )
-        // mDNS — удобство, а не условие работы сервера. Если регистрация
-        // упала, телефон всё равно доступен по URL и токену.
+        // mDNS — вспомогательное удобство, а не условие работы сервера. Если регистрация
+        // упала, телефон всё равно доступен через LAN-скан, UDP-маяк и прямой URL.
         runCatching { publisher.start() }.onFailure { error ->
             Log.w(TAG, "mDNS: запуск не удался: ${error.javaClass.simpleName}")
-            ServerRuntime.update {
-                it.copy(warning = "mDNS недоступен — подключитесь по URL вручную")
-            }
         }
         nsdPublisher = publisher
     }
