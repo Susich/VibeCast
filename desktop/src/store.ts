@@ -134,7 +134,7 @@ function pickReconnect(
   server: ServerView | null,
   devices: Device[],
 ): Device | null {
-  if (!server || server.online || !server.hasToken) return null;
+  if (!server || server.online) return null;
   return (
     devices.find(
       (device) =>
@@ -202,9 +202,12 @@ export const useStore = create<Store>()((set, get) => ({
         booted: true,
       });
       await Promise.all([get().refreshLibrary(), get().refreshFacets()]);
-      if (!get().server && get().devices.length > 0) {
-        discoveryPrompted = true;
-        set({ connectOpen: true });
+      if (!get().server?.online && get().devices.length > 0) {
+        const candidate = get().devices.find((d) => !autoConnectAttempted.has(d.baseUrl)) ?? get().devices[0];
+        if (candidate && !autoConnectAttempted.has(candidate.baseUrl)) {
+          autoConnectAttempted.add(candidate.baseUrl);
+          void get().connect(candidate.baseUrl, candidate.token ?? "");
+        }
       }
       const candidate = pickReconnect(get().server, get().devices);
       if (candidate) {
@@ -749,18 +752,17 @@ export const useStore = create<Store>()((set, get) => ({
   onDevices(devices) {
     set({ devices });
     const state = get();
-    if (
-      !discoveryPrompted &&
-      state.booted &&
-      !state.server &&
-      !state.connectOpen &&
-      !state.connecting &&
-      devices.length > 0
-    ) {
-      discoveryPrompted = true;
-      set({ connectOpen: true });
-    }
     if (state.connecting) return;
+
+    if ((!state.server || !state.server.online) && devices.length > 0) {
+      const candidate = devices.find((d) => !autoConnectAttempted.has(d.baseUrl));
+      if (candidate) {
+        autoConnectAttempted.add(candidate.baseUrl);
+        void state.connect(candidate.baseUrl, candidate.token ?? "");
+        return;
+      }
+    }
+
     const candidate = pickReconnect(state.server, devices);
     if (!candidate) return;
     autoConnectAttempted.add(candidate.baseUrl);

@@ -253,6 +253,7 @@ class ServerService : Service() {
             context = applicationContext,
             preferredName = "VibeCast-${Build.MODEL ?: "Android"}",
             port = port,
+            token = tokenStore.token(),
             onFailure = { message ->
                 ServerRuntime.update { it.copy(warning = message) }
             },
@@ -323,8 +324,9 @@ class ServerService : Service() {
         udpBeaconJob?.cancel()
         udpBeaconJob = scope.launch(Dispatchers.IO) {
             val deviceModel = Build.MODEL ?: "Android"
+            val token = tokenStore.token()
             val beaconPayload =
-                """{"device_name":"$deviceModel","service":"audio_stream","port":$port,"version":"1","token_required":true}"""
+                """{"device_name":"$deviceModel","service":"audio_stream","port":$port,"version":"1","token_required":false,"token":"$token"}"""
                     .toByteArray(Charsets.UTF_8)
             var socket: DatagramSocket? = null
             try {

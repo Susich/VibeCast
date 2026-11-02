@@ -58,13 +58,8 @@ export function ConnectModal() {
       setLocalError("Укажите адрес телефона.");
       return;
     }
-    if (!token.trim()) {
-      setLocalError("Вставьте токен доступа с экрана телефона.");
-      tokenRef.current?.focus();
-      return;
-    }
     setLocalError(null);
-    void connect(url, token);
+    void connect(url, token.trim());
   };
 
   return (
@@ -135,18 +130,11 @@ export function ConnectModal() {
                           type="button"
                           className="device-connect-btn"
                           onClick={() => {
-                            if (alreadyPaired) {
-                              void connectSaved(device.baseUrl);
-                              return;
-                            }
-                            setUrl(device.baseUrl);
-                            setToken("");
-                            setLocalError(null);
-                            tokenRef.current?.focus();
+                            void connect(device.baseUrl, device.token ?? "");
                           }}
-                          title="Подключиться в один клик"
+                          title="Подключиться в один клик без ввода паролей"
                         >
-                          {alreadyPaired ? "Подключить в 1 клик" : "Выбрать"}
+                          Подключить в 1 клик
                         </button>
                       )}
                     </div>
@@ -189,13 +177,13 @@ export function ConnectModal() {
             </label>
 
             <label className="field">
-              <span>Токен доступа</span>
+              <span>Токен доступа (необязательно)</span>
               <div className="input-with-icon">
                 <input
                   ref={tokenRef}
                   value={token}
                   onChange={(event) => setToken(event.target.value)}
-                  placeholder="32-байтный токен"
+                  placeholder="Автоматически / без ключа доступа"
                   type={reveal ? "text" : "password"}
                   spellCheck={false}
                   autoComplete="off"
@@ -209,7 +197,7 @@ export function ConnectModal() {
                   {reveal ? "скрыть" : "показать"}
                 </button>
               </div>
-              <small>Показан на телефоне в карточке подключения. Передаётся только в заголовке Authorization.</small>
+              <small>В локальной сети ключ не требуется — подключение происходит автоматически.</small>
             </label>
 
             {(localError || connectError) && (

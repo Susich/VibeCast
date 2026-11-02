@@ -44,15 +44,19 @@ pub async fn connect_manual(
     token: Option<String>,
 ) -> Result<ServerView, String> {
     let (base_url, token_from_url) = normalize_base(&url)?;
-    let token = token
+    let mut token = token
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .or(token_from_url)
-        .ok_or_else(|| {
-            "Укажите токен с телефона. Его можно скопировать на экране VibeCast.".to_string()
-        })?;
+        .or(token_from_url);
 
-    apply_connection(&app, state.inner(), base_url, token, true).await
+    if token.is_none() {
+        if let Ok(health) = catalog::health(&state.http, &base_url).await {
+            token = health.token;
+        }
+    }
+
+    let token_str = token.unwrap_or_default();
+    apply_connection(&app, state.inner(), base_url, token_str, true).await
 }
 
 /// Reconnects to a phone that was paired before, reusing its saved bearer
@@ -64,11 +68,23 @@ pub async fn connect_saved(
     state: State<'_, AppState>,
     url: String,
 ) -> Result<ServerView, String> {
-    let (base_url, _) = normalize_base(&url)?;
-    let saved = state
+    let (base_url, token_from_url) = normalize_base(&url)?;
+    let saved_token = state
         .session()
-        .ok_or_else(|| "Нет сохранённого подключения. Введите токен с телефона.".to_string())?;
-    apply_connection(&app, state.inner(), base_url, saved.token, false).await
+        .map(|s| s.token)
+        .or(token_from_url);
+
+    let token = match saved_token {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            if let Ok(health) = catalog::health(&state.http, &base_url).await {
+                health.token.unwrap_or_default()
+            } else {
+                String::new()
+            }
+        }
+    };
+    apply_connection(&app, state.inner(), base_url, token, false).await
 }
 
 async fn apply_connection(
@@ -79,12 +95,17 @@ async fn apply_connection(
     reset_on_base_change: bool,
 ) -> Result<ServerView, String> {
     let health = catalog::validate_token(&state.http, &base_url, &token).await?;
+    let effective_token = if !token.is_empty() {
+        token
+    } else {
+        health.token.clone().unwrap_or_default()
+    };
 
     let previous_base = state.session().map(|session| session.base_url);
     let base_changed = previous_base.as_deref() != Some(base_url.as_str());
     let session = ServerSession {
         base_url: base_url.clone(),
-        token,
+        token: effective_token,
         device_name: health.device_name.clone(),
     };
 

@@ -110,18 +110,20 @@ async fn fetch_page(
     token: &str,
     offset: u32,
 ) -> Result<LibraryPage, String> {
-    let response = client
+    let mut req = client
         .get(format!(
             "{}/library?offset={}&limit={}",
             base_url.trim_end_matches('/'),
             offset,
             PAGE_SIZE
         ))
-        .bearer_auth(token)
-        .timeout(Duration::from_secs(20))
-        .send()
-        .await
-        .map_err(connection_error)?;
+        .timeout(Duration::from_secs(20));
+
+    if !token.is_empty() {
+        req = req.bearer_auth(token);
+    }
+
+    let response = req.send().await.map_err(connection_error)?;
 
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err("Неверный токен. Скопируйте токен или ссылку с экрана телефона.".to_string());
@@ -145,7 +147,12 @@ pub async fn validate_token(
     token: &str,
 ) -> Result<Health, String> {
     let health = health(client, base_url).await?;
-    fetch_page(client, base_url, token, 0)
+    let effective_token = if !token.is_empty() {
+        token
+    } else {
+        health.token.as_deref().unwrap_or("")
+    };
+    fetch_page(client, base_url, effective_token, 0)
         .await
         .map_err(|err| {
             if err.starts_with("Неверный токен") {
@@ -162,13 +169,19 @@ pub async fn fetch_library(
     base_url: &str,
     token: &str,
 ) -> Result<(Vec<Track>, i64), String> {
+    let health = health(client, base_url).await.ok();
+    let effective_token = if !token.is_empty() {
+        token
+    } else {
+        health.as_ref().and_then(|h| h.token.as_deref()).unwrap_or("")
+    };
     let mut tracks: Vec<Track> = Vec::new();
     let mut version: Option<i64> = None;
     let mut total: i64 = 0;
     let mut offset: u32 = 0;
 
     loop {
-        let page = fetch_page(client, base_url, token, offset).await?;
+        let page = fetch_page(client, base_url, effective_token, offset).await?;
 
         if page.version < 0 {
             return Err("Сервер вернул некорректную версию библиотеки".to_string());

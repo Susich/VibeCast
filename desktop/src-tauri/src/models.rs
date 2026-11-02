@@ -50,10 +50,16 @@ pub struct Health {
     pub app: String,
     pub protocol: i32,
     pub device_name: String,
+    #[serde(default)]
     #[allow(dead_code)]
     pub catalog_version: i64,
+    #[serde(default)]
     #[allow(dead_code)]
     pub track_count: i64,
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub token_required: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +92,8 @@ pub struct Device {
     pub base_url: String,
     pub version: Option<String>,
     pub token_required: bool,
+    #[serde(default)]
+    pub token: Option<String>,
     #[serde(default)]
     pub ping_ms: Option<u64>,
     #[serde(default)]

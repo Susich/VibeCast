@@ -51,6 +51,7 @@ data class ServerConfig(
     val token: String,
     val protocolVersion: Int = HealthDto.PROTOCOL_VERSION,
     val appVersion: String = "0.1.0",
+    val requireAuth: Boolean = false,
 )
 
 /** Broadcast версии каталога подписчикам SSE. replay=1 отдаёт актуальную версию. */
@@ -131,13 +132,15 @@ fun io.ktor.server.application.Application.vibeCastModule(
                     deviceName = data.deviceName,
                     catalogVersion = data.catalogVersion(),
                     trackCount = data.catalogPage(0, 1, null).total,
+                    token = if (config.requireAuth) null else config.token,
+                    tokenRequired = config.requireAuth,
                 ),
             )
         }
 
         route("/library") {
             get {
-                if (!call.authorized(config.token)) return@get
+                if (!call.authorized(config.token, config.requireAuth)) return@get
                 val offset = call.request.queryParameters["offset"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
                 val limit = (call.request.queryParameters["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 1000)
                 val query = call.request.queryParameters["q"]?.trim()?.takeIf { it.isNotEmpty() }
@@ -156,18 +159,18 @@ fun io.ktor.server.application.Application.vibeCastModule(
 
         route("/audio/{id}") {
             get {
-                if (!call.authorized(config.token)) return@get
+                if (!call.authorized(config.token, config.requireAuth)) return@get
                 call.respondAudioTrack(data, config, headOnly = false)
             }
             head {
-                if (!call.authorized(config.token)) return@head
+                if (!call.authorized(config.token, config.requireAuth)) return@head
                 call.respondAudioTrack(data, config, headOnly = true)
             }
         }
 
         route("/cover/{id}") {
             get {
-                if (!call.authorized(config.token)) return@get
+                if (!call.authorized(config.token, config.requireAuth)) return@get
                 val id = call.parameters["id"] ?: return@get call.respondNotFound()
                 val cover = data.cover(id) ?: return@get call.respondNotFound()
                 call.response.header(HttpHeaders.CacheControl, "public, max-age=86400")
@@ -180,7 +183,7 @@ fun io.ktor.server.application.Application.vibeCastModule(
         }
 
         get("/events") {
-            if (!call.authorized(config.token)) return@get
+            if (!call.authorized(config.token, config.requireAuth)) return@get
             call.response.header(HttpHeaders.CacheControl, "no-cache")
             call.response.header("X-Accel-Buffering", "no")
             call.respondTextWriter(ContentType.Text.EventStream) {
@@ -206,7 +209,7 @@ fun io.ktor.server.application.Application.vibeCastModule(
         route("/remote") {
             // ПК передаёт текущий статус воспроизведения
             post("/state") {
-                if (!call.authorized(config.token)) return@post
+                if (!call.authorized(config.token, config.requireAuth)) return@post
                 val state = call.receive<PlayerStateDto>()
                 remoteHub.updatePlayerState(state.copy(updatedAt = System.currentTimeMillis()))
                 call.respond(HttpStatusCode.OK)
@@ -214,14 +217,14 @@ fun io.ktor.server.application.Application.vibeCastModule(
 
             // Получить актуальный статус воспроизведения на ПК
             get("/state") {
-                if (!call.authorized(config.token)) return@get
+                if (!call.authorized(config.token, config.requireAuth)) return@get
                 val state = remoteHub.currentState() ?: PlayerStateDto()
                 call.respond(state)
             }
 
             // Отправить команду на ПК (play, pause, next, prev, seek, volume, play_track)
             post("/command") {
-                if (!call.authorized(config.token)) return@post
+                if (!call.authorized(config.token, config.requireAuth)) return@post
                 val cmd = call.receive<RemoteCommandDto>()
                 remoteHub.sendCommand(cmd)
                 call.respond(HttpStatusCode.OK)
@@ -229,7 +232,7 @@ fun io.ktor.server.application.Application.vibeCastModule(
 
             // SSE-поток для ПК: ПК слушает команды с телефона в реальном времени
             get("/events") {
-                if (!call.authorized(config.token)) return@get
+                if (!call.authorized(config.token, config.requireAuth)) return@get
                 call.response.header(HttpHeaders.CacheControl, "no-cache")
                 call.response.header("X-Accel-Buffering", "no")
                 call.respondTextWriter(ContentType.Text.EventStream) {
@@ -255,7 +258,8 @@ fun io.ktor.server.application.Application.vibeCastModule(
     }
 }
 
-private suspend fun ApplicationCall.authorized(expectedToken: String): Boolean {
+private suspend fun ApplicationCall.authorized(expectedToken: String, requireAuth: Boolean = false): Boolean {
+    if (!requireAuth) return true
     if (BearerAuth.matches(request.headers[HttpHeaders.Authorization], expectedToken)) return true
     respond(HttpStatusCode.Unauthorized, ErrorDto("unauthorized"))
     return false

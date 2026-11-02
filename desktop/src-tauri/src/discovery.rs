@@ -71,7 +71,8 @@ impl Discovery {
                                     let host = peer_addr.ip().to_string();
                                     let base_url = format!("http://{host}:{port}");
                                     let version = val.get("version").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                    let token_required = val.get("token_required").and_then(|v| v.as_bool()).unwrap_or(true);
+                                    let mut token = val.get("token").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                    let token_required = val.get("token_required").and_then(|v| v.as_bool()).unwrap_or(false);
 
                                     let mut ping_ms = None;
                                     if let Some(ref client) = ping_client {
@@ -79,6 +80,11 @@ impl Discovery {
                                         if let Ok(resp) = client.get(format!("{base_url}/health")).send().await {
                                             if resp.status().is_success() {
                                                 ping_ms = Some(start.elapsed().as_millis().max(1) as u64);
+                                                if token.is_none() {
+                                                    if let Ok(h) = resp.json::<Health>().await {
+                                                        token = h.token;
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -91,6 +97,7 @@ impl Discovery {
                                         base_url,
                                         version,
                                         token_required,
+                                        token,
                                         ping_ms: ping_ms.or(Some(4)),
                                         source: Some("UDP Broadcast".to_string()),
                                     };
@@ -147,8 +154,12 @@ impl Discovery {
                                         .get_property_val_str("version")
                                         .map(str::to_string)
                                         .filter(|value| !value.is_empty());
+                                    let token = info
+                                        .get_property_val_str("token")
+                                        .map(str::to_string)
+                                        .filter(|value| !value.is_empty());
                                     let token_required =
-                                        info.get_property_val_str("token_required") != Some("0");
+                                        info.get_property_val_str("token_required") == Some("1");
 
                                     let device = Device {
                                         id: fullname,
@@ -158,6 +169,7 @@ impl Discovery {
                                         base_url: format!("http://{ip}:{port}"),
                                         version,
                                         token_required,
+                                        token,
                                         ping_ms: Some(8),
                                         source: Some("mDNS".to_string()),
                                     };
@@ -411,7 +423,8 @@ async fn scan_local_network(client: &reqwest::Client) -> HashMap<String, Device>
                     port,
                     base_url,
                     version: Some(health.protocol.to_string()),
-                    token_required: true,
+                    token_required: health.token_required.unwrap_or(false),
+                    token: health.token,
                     ping_ms: Some(ping_ms),
                     source: Some("LAN Scan".to_string()),
                 })
@@ -476,7 +489,8 @@ mod tests {
             port,
             base_url: format!("http://{host}:{port}"),
             version: Some("1".to_string()),
-            token_required: true,
+            token_required: false,
+            token: None,
             ping_ms: Some(10),
             source: Some("test".to_string()),
         }

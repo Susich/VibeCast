@@ -40,7 +40,7 @@ class ServerIntegrationTest {
 
     private fun withServer(block: suspend io.ktor.server.testing.ApplicationTestBuilder.() -> Unit) =
         testApplication {
-            application { vibeCastModule(data, ServerConfig(token = token), SseHub()) }
+            application { vibeCastModule(data, ServerConfig(token = token, requireAuth = true), SseHub()) }
             block()
         }
 

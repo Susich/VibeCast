@@ -36,6 +36,8 @@ data class HealthDto(
     val deviceName: String,
     val catalogVersion: Long,
     val trackCount: Int,
+    val token: String? = null,
+    val tokenRequired: Boolean = false,
 ) {
     companion object {
         const val PROTOCOL_VERSION = 1

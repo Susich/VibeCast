@@ -20,6 +20,7 @@ class NsdPublisher(
     context: Context,
     private val preferredName: String,
     private val port: Int,
+    private val token: String = "",
     private val onFailure: (String) -> Unit,
     private val onRegistered: () -> Unit = {},
 ) {
@@ -52,7 +53,10 @@ class NsdPublisher(
             serviceType = SERVICE_TYPE
             setPort(port)
             setAttribute("version", HealthDto.PROTOCOL_VERSION.toString())
-            setAttribute("token_required", "1")
+            setAttribute("token_required", "0")
+            if (token.isNotBlank()) {
+                setAttribute("token", token)
+            }
             setAttribute("device", android.os.Build.MODEL ?: "Android")
         }
 

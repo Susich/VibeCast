@@ -35,6 +35,7 @@ export interface Device {
   baseUrl: string;
   version: string | null;
   tokenRequired: boolean;
+  token?: string | null;
   pingMs?: number | null;
   source?: string | null;
 }
