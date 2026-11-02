@@ -5,7 +5,7 @@ import { formatTime } from "../lib/format";
 import { useStore } from "../store";
 import type { TrackRow } from "../lib/types";
 import { Cover } from "./Cover";
-import { DownloadIcon, MusicIcon, PlayIcon, SearchIcon, SpinnerIcon, WifiOffIcon } from "./Icons";
+import { DownloadIcon, MusicIcon, PlayIcon, SearchIcon, SpinnerIcon, TrashIcon, WifiOffIcon } from "./Icons";
 
 function Equalizer() {
   return (
@@ -32,6 +32,8 @@ function TrackRowItem({
 }) {
   const loadCover = useStore((state) => state.loadCover);
   const progress = useStore((state) => state.progress[track.id]);
+  const deleteCachedTrack = useStore((state) => state.deleteCachedTrack);
+  const cacheTrack = useStore((state) => state.cacheTrack);
 
   useEffect(() => {
     loadCover(track.id);
@@ -90,11 +92,37 @@ function TrackRowItem({
             {Math.round((progress.received / Math.max(1, progress.total)) * 100)}%
           </span>
         ) : track.cached ? (
-          <span className="cache-badge" title="Есть в локальном кэше">
-            <DownloadIcon size={12} />
-            кэш
-          </span>
-        ) : null}
+          <div className="cache-actions-wrap" onClick={(e) => e.stopPropagation()}>
+            <span className="cache-badge" title="Сохранено в локальном кэше">
+              кэш
+            </span>
+            <button
+              className="track-action-btn delete-cache-btn"
+              title="Удалить трек из кэша"
+              aria-label="Удалить трек из кэша"
+              onClick={(e) => {
+                e.stopPropagation();
+                void deleteCachedTrack(track.id);
+              }}
+            >
+              <TrashIcon size={13} />
+            </button>
+          </div>
+        ) : (
+          <div className="cache-actions-wrap" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="track-action-btn cache-download-btn"
+              title="Скачать трек в кэш"
+              aria-label="Скачать трек в кэш"
+              onClick={(e) => {
+                e.stopPropagation();
+                void cacheTrack(track.id);
+              }}
+            >
+              <DownloadIcon size={13} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

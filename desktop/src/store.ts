@@ -97,6 +97,10 @@ interface Store {
   disconnect: () => Promise<void>;
   updateMpvPath: (path: string) => Promise<void>;
   clearCache: () => Promise<void>;
+  setCacheMode: (mode: "auto" | "manual") => Promise<void>;
+  deleteCachedTrack: (trackId: string) => Promise<void>;
+  cacheTrack: (trackId: string) => Promise<void>;
+  onTrackDeleted: (trackId: string, stats: CacheStats) => void;
   resync: () => Promise<void>;
   onLibraryUpdated: (stats: LibraryStats) => void;
   onServerChanged: (server: ServerView | null) => void;
@@ -186,13 +190,6 @@ export const useStore = create<Store>()((set, get) => ({
       const boot = await call<Bootstrap>("bootstrap");
       const initialTheme = boot.settings.theme || "cyberpunk";
       applyTheme(initialTheme);
-      let isOverlay = false;
-      try {
-        const overlay = await call<OverlayState>("get_overlay_state");
-        isOverlay = overlay.isOverlay;
-      } catch {
-        // default full window
-      }
       set({
         server: boot.server,
         devices: boot.devices,
@@ -201,7 +198,7 @@ export const useStore = create<Store>()((set, get) => ({
         stats: boot.stats,
         cachedCount: boot.cachedCount,
         theme: initialTheme,
-        isOverlay,
+        isOverlay: false,
         booted: true,
       });
       await Promise.all([get().refreshLibrary(), get().refreshFacets()]);
@@ -262,7 +259,35 @@ export const useStore = create<Store>()((set, get) => ({
     try {
       const result = await call<SearchResult>("search_tracks", { query });
       if (request !== libraryRequest) return;
-      set({ tracks: result.tracks, total: result.total, loading: false });
+
+      const currentId = get().player.currentTrackId;
+      const currentQueue = get().queue;
+      let newQueue = currentQueue;
+      let newQueueIndex = get().queueIndex;
+
+      // When sorting/filters change:
+      // If currently playing track exists in new results, synchronize queue with the new sorted view!
+      if (currentId) {
+        const idxInNewTracks = result.tracks.findIndex((t) => t.id === currentId);
+        if (idxInNewTracks !== -1) {
+          newQueue = [...result.tracks];
+          newQueueIndex = idxInNewTracks;
+        } else {
+          // If current track is not in the new filter, preserve currentQueue and maintain accurate queueIndex
+          const idxInCurrentQueue = currentQueue.findIndex((t) => t.id === currentId);
+          if (idxInCurrentQueue !== -1) {
+            newQueueIndex = idxInCurrentQueue;
+          }
+        }
+      }
+
+      set({
+        tracks: result.tracks,
+        total: result.total,
+        queue: newQueue,
+        queueIndex: newQueueIndex,
+        loading: false,
+      });
     } catch (error) {
       if (request !== libraryRequest) return;
       set({ loading: false, libraryError: errorText(error) });
@@ -309,15 +334,11 @@ export const useStore = create<Store>()((set, get) => ({
   },
 
   playTrack(track) {
-    const { tracks, queue, queueIndex } = get();
-    let nextQueue = queue;
-    let nextIndex = queueIndex;
-    if (nextQueue.length === 0 || !nextQueue.some((row) => row.id === track.id)) {
-      nextQueue = tracks.some((row) => row.id === track.id) ? tracks : [track];
-      nextIndex = nextQueue.findIndex((row) => row.id === track.id);
-    } else {
-      nextIndex = nextQueue.findIndex((row) => row.id === track.id);
-    }
+    const { tracks } = get();
+    // When clicking a track in the list, queue is formed from current view's tracks in their exact sort order
+    const nextQueue = tracks.some((row) => row.id === track.id) ? [...tracks] : [track];
+    const nextIndex = Math.max(0, nextQueue.findIndex((row) => row.id === track.id));
+
     set({
       queue: nextQueue,
       queueIndex: nextIndex,
@@ -350,14 +371,48 @@ export const useStore = create<Store>()((set, get) => ({
   playQueueItem(index) {
     const { queue } = get();
     if (index < 0 || index >= queue.length) return;
-    set({ queueIndex: index });
-    get().playTrack(queue[index]);
+    const track = queue[index];
+    set({
+      queueIndex: index,
+      player: {
+        ...get().player,
+        currentTrackId: track.id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        position: 0,
+        duration: track.durationMs / 1000,
+        paused: false,
+        source: track.cached ? "cache" : "stream",
+        loading: true,
+        buffering: false,
+        error: null,
+      },
+    });
+    void call<PlayerState>("play_track", { trackId: track.id })
+      .then((player) => set({ player }))
+      .catch((error) => {
+        const message = errorText(error);
+        set({
+          player: { ...get().player, loading: false, paused: true, error: message },
+        });
+        get().addToast(message, "error");
+      });
   },
 
   async next() {
-    const { queue, queueIndex } = get();
-    if (queueIndex + 1 < queue.length) {
-      get().playQueueItem(queueIndex + 1);
+    const { queue, queueIndex, player } = get();
+    if (queue.length === 0) return;
+
+    // Resilient queueIndex alignment
+    let currentIndex = queueIndex;
+    if (player.currentTrackId && (currentIndex < 0 || currentIndex >= queue.length || queue[currentIndex]?.id !== player.currentTrackId)) {
+      const found = queue.findIndex((t) => t.id === player.currentTrackId);
+      if (found !== -1) currentIndex = found;
+    }
+
+    if (currentIndex + 1 < queue.length) {
+      get().playQueueItem(currentIndex + 1);
       return;
     }
     try {
@@ -384,12 +439,23 @@ export const useStore = create<Store>()((set, get) => ({
 
   async prev() {
     const { player, queue, queueIndex } = get();
-    if (!player.currentTrackId) return;
-    if (player.position > 3 || queueIndex <= 0) {
+    if (!player.currentTrackId || queue.length === 0) return;
+    if (player.position > 3) {
       await get().seek(0);
       return;
     }
-    get().playQueueItem(queueIndex - 1);
+
+    let currentIndex = queueIndex;
+    if (currentIndex < 0 || currentIndex >= queue.length || queue[currentIndex]?.id !== player.currentTrackId) {
+      const found = queue.findIndex((t) => t.id === player.currentTrackId);
+      if (found !== -1) currentIndex = found;
+    }
+
+    if (currentIndex > 0) {
+      get().playQueueItem(currentIndex - 1);
+    } else {
+      await get().seek(0);
+    }
   },
 
   async toggle() {
@@ -574,13 +640,52 @@ export const useStore = create<Store>()((set, get) => ({
       const stats = await call<CacheStats>("clear_cache");
       set({
         cachedCount: stats.count,
-        tracks: get().tracks.map((row) => ({ ...row, cached: false })),
+        tracks: get().view === "cached" ? [] : get().tracks.map((row) => ({ ...row, cached: false })),
         queue: get().queue.map((row) => ({ ...row, cached: false })),
         progress: {},
       });
+      if (get().view === "cached") {
+        set({ total: 0 });
+      }
       get().addToast("Кэш аудио очищен", "success");
     } catch (error) {
       get().addToast(errorText(error), "error");
+    }
+  },
+
+  async setCacheMode(mode: "auto" | "manual") {
+    set({
+      settings: { ...get().settings, cacheMode: mode },
+    });
+    try {
+      await call("set_cache_mode", { mode });
+      get().addToast(
+        mode === "auto"
+          ? "Кэширование: всегда при воспроизведении"
+          : "Кэширование: только вручную",
+        "info"
+      );
+    } catch {
+      // fallback
+    }
+  },
+
+  async cacheTrack(trackId: string) {
+    try {
+      await call("cache_track", { trackId });
+      get().addToast("Скачивание в кэш начато...", "info");
+    } catch (err) {
+      get().addToast(`Ошибка скачивания в кэш: ${errorText(err)}`, "error");
+    }
+  },
+
+  async deleteCachedTrack(trackId: string) {
+    try {
+      const stats = await call<CacheStats>("delete_cached_track", { trackId });
+      get().onTrackDeleted(trackId, stats);
+      get().addToast("Трек удалён из кэша", "info");
+    } catch (err) {
+      get().addToast(`Не удалось удалить из кэша: ${errorText(err)}`, "error");
     }
   },
 
@@ -679,9 +784,26 @@ export const useStore = create<Store>()((set, get) => ({
     set({
       cachedCount: stats.count,
       progress: {},
-      tracks: get().tracks.map((row) => ({ ...row, cached: false })),
+      tracks: get().view === "cached" ? [] : get().tracks.map((row) => ({ ...row, cached: false })),
       queue: get().queue.map((row) => ({ ...row, cached: false })),
     });
+    if (get().view === "cached") {
+      set({ total: 0 });
+    }
+  },
+
+  onTrackDeleted(trackId, stats) {
+    const isCachedView = get().view === "cached";
+    set({
+      cachedCount: stats.count,
+      tracks: isCachedView
+        ? get().tracks.filter((row) => row.id !== trackId)
+        : updateRows(get().tracks, trackId, false),
+      queue: updateRows(get().queue, trackId, false),
+    });
+    if (isCachedView) {
+      set({ total: Math.max(0, get().total - 1) });
+    }
   },
 
   loadCover(trackId) {

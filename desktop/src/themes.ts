@@ -20,9 +20,15 @@ export interface ThemeDefinition {
 export type ThemeId =
   | "cyberpunk"
   | "midnight"
+  | "synthwave"
+  | "emerald"
+  | "tokyo"
+  | "crimson"
+  | "amethyst"
   | "catppuccin"
   | "dracula"
-  | "nord";
+  | "nord"
+  | "solarized";
 
 export const THEMES: Record<ThemeId, ThemeDefinition> = themesData as Record<
   ThemeId,

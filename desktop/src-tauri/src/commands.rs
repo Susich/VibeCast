@@ -5,8 +5,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::catalog::{self, normalize_base};
 use crate::models::{
-    AppConfig, Bootstrap, CacheStats, Facets, LibraryStats, OverlayState, PlayerState, SearchQuery, SearchResult,
-    ServerSession, ServerView, Settings, Toast,
+    AppConfig, Bootstrap, CacheStats, Facets, LibraryStats, OverlayState, PlayerState, RemoteCommand, SearchQuery,
+    SearchResult, ServerSession, ServerView, Settings, Toast, Track, TrackRow, UpdateInfo,
 };
 use crate::state::AppState;
 
@@ -153,13 +153,90 @@ pub fn search_tracks(
     query: SearchQuery,
 ) -> Result<SearchResult, String> {
     let cached_only = query.cached_only.unwrap_or(false);
+    if cached_only {
+        let cached_ids = state.cache.all_cached_ids();
+        let mut tracks: Vec<TrackRow> = Vec::new();
+        let mut found_ids = std::collections::HashSet::new();
+
+        if !cached_ids.is_empty() {
+            if let Ok(db_tracks) = state.db.get_tracks_by_ids(&cached_ids) {
+                for t in db_tracks {
+                    found_ids.insert(t.id.clone());
+                    tracks.push(TrackRow {
+                        track: t,
+                        cached: true,
+                    });
+                }
+            }
+        }
+
+        for id in &cached_ids {
+            if !found_ids.contains(id) {
+                if let Some(path) = state.cache.cached_path_for_id(id) {
+                    let ext = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("audio");
+                    let size = path.metadata().map(|m| m.len() as i64).unwrap_or(0);
+                    let title = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(id)
+                        .to_string();
+                    tracks.push(TrackRow {
+                        track: Track {
+                            id: id.clone(),
+                            title,
+                            artist: "Локальный кэш".to_string(),
+                            album: "Сохранённые треки".to_string(),
+                            album_artist: None,
+                            duration_ms: 0,
+                            mime: format!("audio/{ext}"),
+                            size,
+                            track_no: None,
+                            year: None,
+                            cover_id: None,
+                            date_modified: 0,
+                        },
+                        cached: true,
+                    });
+                }
+            }
+        }
+
+        if let Some(ref q) = query.query {
+            let q_lower = q.to_lowercase();
+            tracks.retain(|row| {
+                row.track.title.to_lowercase().contains(&q_lower)
+                    || row.track.artist.to_lowercase().contains(&q_lower)
+                    || row.track.album.to_lowercase().contains(&q_lower)
+            });
+        }
+
+        if let Some(ref art) = query.artist {
+            let art_lower = art.to_lowercase();
+            tracks.retain(|row| row.track.artist.to_lowercase().contains(&art_lower));
+        }
+        if let Some(ref alb) = query.album {
+            let alb_lower = alb.to_lowercase();
+            tracks.retain(|row| row.track.album.to_lowercase().contains(&alb_lower));
+        }
+
+        match query.sort.as_deref() {
+            Some("title") => tracks.sort_by(|a, b| a.track.title.to_lowercase().cmp(&b.track.title.to_lowercase())),
+            Some("artist") => tracks.sort_by(|a, b| a.track.artist.to_lowercase().cmp(&b.track.artist.to_lowercase())),
+            Some("album") => tracks.sort_by(|a, b| a.track.album.to_lowercase().cmp(&b.track.album.to_lowercase())),
+            Some("duration") => tracks.sort_by(|a, b| b.track.duration_ms.cmp(&a.track.duration_ms)),
+            _ => tracks.sort_by(|a, b| a.track.title.to_lowercase().cmp(&b.track.title.to_lowercase())),
+        }
+
+        let total = tracks.len() as i64;
+        return Ok(SearchResult { tracks, total });
+    }
+
     let mut result = state.db.search(&query)?;
     for row in &mut result.tracks {
         row.cached = state.cache.is_cached(&row.track.id);
-    }
-    if cached_only {
-        result.tracks.retain(|row| row.cached);
-        result.total = result.tracks.len() as i64;
     }
     Ok(result)
 }
@@ -248,9 +325,15 @@ pub async fn play_track(
         .await?;
 
     if let Some(session) = download {
-        state
-            .cache
-            .ensure_download(track.clone(), session.base_url, session.token);
+        let cache_mode = state
+            .db
+            .get_setting("cache_mode")
+            .unwrap_or_else(|| "auto".to_string());
+        if cache_mode != "manual" {
+            state
+                .cache
+                .ensure_download(track.clone(), session.base_url, session.token);
+        }
     }
 
     Ok(state.player.state())
@@ -323,6 +406,41 @@ pub fn clear_cache(state: State<'_, AppState>) -> Result<CacheStats, String> {
 }
 
 #[tauri::command]
+pub fn delete_cached_track(
+    state: State<'_, AppState>,
+    track_id: String,
+) -> Result<CacheStats, String> {
+    state.cache.delete_track(&track_id)
+}
+
+#[tauri::command]
+pub async fn cache_track(
+    state: State<'_, AppState>,
+    track_id: String,
+) -> Result<(), String> {
+    let track = if let Ok(Some(t)) = state.db.get_track(&track_id) {
+        t
+    } else {
+        return Err("Трек не найден в каталоге".to_string());
+    };
+
+    let session = state.session().ok_or_else(|| "Телефон не подключен".to_string())?;
+    state.cache.ensure_download(track, session.base_url, session.token);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_cache_mode(state: State<'_, AppState>, mode: String) -> Result<String, String> {
+    let mode = if mode == "manual" { "manual" } else { "auto" };
+    state.db.set_setting("cache_mode", mode)?;
+    if let Ok(mut settings) = state.settings.write() {
+        settings.cache_mode = mode.to_string();
+    }
+    sync_to_config_json(state.inner());
+    Ok(mode.to_string())
+}
+
+#[tauri::command]
 pub fn open_cache_dir(state: State<'_, AppState>) -> Result<(), String> {
     let dir = state.cache.audio_dir().to_path_buf();
     #[cfg(target_os = "windows")]
@@ -384,6 +502,7 @@ pub fn sync_to_config_json(state: &AppState) {
         "theme": settings.theme,
         "volume": settings.volume,
         "mpvPath": settings.mpv_path,
+        "cacheMode": settings.cache_mode,
         "overlay": {
             "alwaysOnTop": true,
             "isOverlay": is_overlay,
@@ -450,9 +569,10 @@ pub async fn set_overlay_mode(
         }
 
         let _ = window.set_decorations(false);
+        let _ = window.set_shadow(false);
         let _ = window.set_always_on_top(true);
         let _ = window.set_resizable(false);
-        let _ = window.set_size(tauri::LogicalSize::new(380.0, 140.0));
+        let _ = window.set_size(tauri::LogicalSize::new(390.0, 185.0));
 
         let saved_x = state
             .db
@@ -481,33 +601,12 @@ pub async fn set_overlay_mode(
         }
 
         let _ = window.set_always_on_top(false);
+        let _ = window.set_shadow(true);
         let _ = window.set_decorations(true);
         let _ = window.set_resizable(true);
 
-        let full_w = state
-            .db
-            .get_setting("full_size_w")
-            .and_then(|v| v.parse::<f64>().ok())
-            .unwrap_or(1200.0);
-        let full_h = state
-            .db
-            .get_setting("full_size_h")
-            .and_then(|v| v.parse::<f64>().ok())
-            .unwrap_or(620.0);
-        let _ = window.set_size(tauri::LogicalSize::new(full_w.max(960.0), full_h.max(560.0)));
-
-        if let (Some(x), Some(y)) = (
-            state
-                .db
-                .get_setting("full_pos_x")
-                .and_then(|v| v.parse::<i32>().ok()),
-            state
-                .db
-                .get_setting("full_pos_y")
-                .and_then(|v| v.parse::<i32>().ok()),
-        ) {
-            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
-        }
+        // Restore window to maximized (во весь экран)
+        let _ = window.maximize();
 
         let _ = state.db.set_setting("is_overlay", "false");
         sync_to_config_json(state.inner());
@@ -525,6 +624,50 @@ pub fn save_overlay_position(state: State<'_, AppState>, x: i32, y: i32) -> Resu
     state.db.set_setting("overlay_pos_x", &x.to_string())?;
     state.db.set_setting("overlay_pos_y", &y.to_string())?;
     sync_to_config_json(state.inner());
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_overlay_compact(
+    window: tauri::WebviewWindow,
+    compact: bool,
+) -> Result<(), String> {
+    let _ = window.set_shadow(false);
+    if compact {
+        if let (Ok(pos), Ok(Some(monitor))) = (window.outer_position(), window.current_monitor()) {
+            let scale = monitor.scale_factor();
+            let screen_w = monitor.size().width as i32;
+            let screen_h = monitor.size().height as i32;
+            let target_w = (120.0 * scale) as i32;
+            let target_h = (120.0 * scale) as i32;
+            let margin = (4.0 * scale) as i32;
+
+            let clamped_x = pos.x.clamp(margin, (screen_w - target_w - margin).max(margin));
+            let clamped_y = pos.y.clamp(margin, (screen_h - target_h - margin - (35.0 * scale) as i32).max(margin));
+
+            if clamped_x != pos.x || clamped_y != pos.y {
+                let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
+            }
+        }
+        let _ = window.set_size(tauri::LogicalSize::new(120.0, 120.0));
+    } else {
+        if let (Ok(pos), Ok(Some(monitor))) = (window.outer_position(), window.current_monitor()) {
+            let scale = monitor.scale_factor();
+            let screen_w = monitor.size().width as i32;
+            let screen_h = monitor.size().height as i32;
+            let target_w = (390.0 * scale) as i32;
+            let target_h = (185.0 * scale) as i32;
+            let margin = (8.0 * scale) as i32;
+
+            let clamped_x = pos.x.clamp(margin, (screen_w - target_w - margin).max(margin));
+            let clamped_y = pos.y.clamp(margin, (screen_h - target_h - margin - (35.0 * scale) as i32).max(margin));
+
+            if clamped_x != pos.x || clamped_y != pos.y {
+                let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
+            }
+        }
+        let _ = window.set_size(tauri::LogicalSize::new(390.0, 185.0));
+    }
     Ok(())
 }
 
@@ -550,11 +693,17 @@ pub fn get_app_config(state: State<'_, AppState>) -> AppConfig {
         .get_setting("overlay_pos_y")
         .and_then(|v| v.parse::<i32>().ok());
 
+    let cache_mode = state
+        .db
+        .get_setting("cache_mode")
+        .or_else(|| Some("auto".to_string()));
+
     AppConfig {
         theme: settings.theme,
         volume: settings.volume,
         mpv_path: settings.mpv_path,
         overlay: OverlayState { is_overlay, x, y },
+        cache_mode,
     }
 }
 
@@ -619,6 +768,208 @@ pub fn restart_sse(app: &AppHandle) {
     if let Ok(mut guard) = state.sse_task.lock() {
         *guard = Some(task);
     };
+
+    let app_remote = app.clone();
+    tauri::async_runtime::spawn(async move {
+        remote_control_loop(app_remote, generation).await;
+    });
+
+    let app_sync = app.clone();
+    tauri::async_runtime::spawn(async move {
+        remote_state_sync_loop(app_sync, generation).await;
+    });
+}
+
+fn parse_sse_command(line: &str) -> Option<RemoteCommand> {
+    let line = line.trim_end_matches('\r').trim();
+    let data = line.strip_prefix("data:")?.trim();
+    serde_json::from_str::<RemoteCommand>(data).ok()
+}
+
+async fn remote_control_loop(app: AppHandle, generation: u64) {
+    loop {
+        {
+            let state = app.state::<AppState>();
+            if state.sse_generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            if state.session().is_none() {
+                return;
+            }
+        }
+
+        let (client, base_url, token) = {
+            let state = app.state::<AppState>();
+            let Some(session) = state.session() else {
+                return;
+            };
+            (state.http.clone(), session.base_url, session.token)
+        };
+
+        let response = client
+            .get(format!("{}/remote/events", base_url.trim_end_matches('/')))
+            .bearer_auth(&token)
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .header(reqwest::header::CACHE_CONTROL, "no-cache")
+            .send()
+            .await;
+
+        if let Ok(response) = response {
+            if response.status().is_success() {
+                let mut stream = response.bytes_stream();
+                let mut buffer = String::new();
+
+                while let Some(chunk) = stream.next().await {
+                    if app.state::<AppState>().sse_generation.load(Ordering::SeqCst) != generation {
+                        return;
+                    }
+                    let Ok(chunk) = chunk else { break; };
+                    buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+                    while let Some(newline) = buffer.find('\n') {
+                        let line: String = buffer.drain(..=newline).collect();
+                        if let Some(cmd) = parse_sse_command(&line) {
+                            let _ = app.emit("remote-control", cmd);
+                        }
+                    }
+                }
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+}
+
+async fn remote_state_sync_loop(app: AppHandle, generation: u64) {
+    let mut last_sync = std::time::Instant::now();
+    let mut last_hash = String::new();
+
+    loop {
+        {
+            let state = app.state::<AppState>();
+            if state.sse_generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            if state.session().is_none() {
+                return;
+            }
+        }
+
+        let (client, base_url, token, player_state) = {
+            let state = app.state::<AppState>();
+            let Some(session) = state.session() else {
+                return;
+            };
+            let p = state.player.state();
+            (state.http.clone(), session.base_url, session.token, p)
+        };
+
+        let hash = format!(
+            "{:?}-{}-{}-{:?}",
+            player_state.current_track_id, player_state.paused, player_state.volume, player_state.position.round()
+        );
+
+        if hash != last_hash || last_sync.elapsed().as_secs() >= 1 {
+            last_hash = hash;
+            last_sync = std::time::Instant::now();
+            let _ = client
+                .post(format!("{}/remote/state", base_url.trim_end_matches('/')))
+                .bearer_auth(&token)
+                .json(&player_state)
+                .timeout(std::time::Duration::from_millis(1500))
+                .send()
+                .await;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+}
+
+#[tauri::command]
+pub async fn check_for_updates(state: State<'_, AppState>) -> Result<UpdateInfo, String> {
+    let client = &state.http;
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let url = "https://api.github.com/repos/Susich/VibeCast/releases/latest";
+
+    let resp = client
+        .get(url)
+        .header("User-Agent", format!("VibeCast-Desktop/{}", current_version))
+        .header("Accept", "application/vnd.github.v3+json")
+        .timeout(std::time::Duration::from_secs(6))
+        .send()
+        .await;
+
+    let response = match resp {
+        Ok(r) => r,
+        Err(e) => return Err(format!("Не удалось связаться с сервером обновлений: {e}")),
+    };
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(UpdateInfo {
+            has_update: false,
+            current_version: current_version.clone(),
+            latest_version: current_version,
+            release_url: "https://github.com/Susich/VibeCast".to_string(),
+            download_url: None,
+            release_notes: Some("У вас установлена актуальная версия.".to_string()),
+        });
+    }
+
+    if !response.status().is_success() {
+        return Err(format!("GitHub API вернул статус {}", response.status().as_u16()));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Неверный ответ GitHub API: {e}"))?;
+
+    let tag_name = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").trim_start_matches('v').to_string();
+    let release_url = json.get("html_url").and_then(|v| v.as_str()).unwrap_or("https://github.com/Susich/VibeCast").to_string();
+    let release_notes = json.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+    let mut download_url = None;
+    if let Some(assets) = json.get("assets").and_then(|v| v.as_array()) {
+        for asset in assets {
+            if let Some(name) = asset.get("name").and_then(|v| v.as_str()) {
+                if name.ends_with(".exe") {
+                    download_url = asset.get("browser_download_url").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    break;
+                }
+            }
+        }
+    }
+
+    let has_update = is_newer_version(&tag_name, &current_version);
+
+    Ok(UpdateInfo {
+        has_update,
+        current_version,
+        latest_version: if tag_name.is_empty() { env!("CARGO_PKG_VERSION").to_string() } else { tag_name },
+        release_url,
+        download_url,
+        release_notes,
+    })
+}
+
+fn is_newer_version(latest: &str, current: &str) -> bool {
+    if latest.is_empty() || latest == current {
+        return false;
+    }
+    let parse_parts = |s: &str| -> Vec<u32> {
+        s.split('.')
+            .filter_map(|p| p.parse::<u32>().ok())
+            .collect()
+    };
+    let l_parts = parse_parts(latest);
+    let c_parts = parse_parts(current);
+    for i in 0..l_parts.len().max(c_parts.len()) {
+        let l = l_parts.get(i).copied().unwrap_or(0);
+        let c = c_parts.get(i).copied().unwrap_or(0);
+        if l > c { return true; }
+        if l < c { return false; }
+    }
+    false
 }
 
 async fn sse_loop(app: AppHandle, generation: u64) {

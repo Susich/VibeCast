@@ -27,6 +27,76 @@
       "meter_gradient": "linear-gradient(180deg, #60a5fa, #3b82f6)"
     }
   },
+  "synthwave": {
+    "name": "Synthwave 80s",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#120b1f",
+      "bg_card": "#1d1233",
+      "accent": "#ff2a85",
+      "accent_hover": "#ff71ce",
+      "text_main": "#fff0f8",
+      "text_muted": "#f0a6ca",
+      "border": "#3b1e5f",
+      "meter_gradient": "linear-gradient(180deg, #ff2a85, #fbee4e)"
+    }
+  },
+  "emerald": {
+    "name": "Emerald Matrix",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#091410",
+      "bg_card": "#10221c",
+      "accent": "#10b981",
+      "accent_hover": "#34d399",
+      "text_main": "#ecfdf5",
+      "text_muted": "#6ee7b7",
+      "border": "#1b3a2f",
+      "meter_gradient": "linear-gradient(180deg, #34d399, #059669)"
+    }
+  },
+  "tokyo": {
+    "name": "Tokyo Night",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#16161e",
+      "bg_card": "#1f2335",
+      "accent": "#7aa2f7",
+      "accent_hover": "#bb9af7",
+      "text_main": "#c0caf5",
+      "text_muted": "#7dcfff",
+      "border": "#292e42",
+      "meter_gradient": "linear-gradient(180deg, #7aa2f7, #bb9af7)"
+    }
+  },
+  "crimson": {
+    "name": "Crimson Flame",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#140a0b",
+      "bg_card": "#211113",
+      "accent": "#ef4444",
+      "accent_hover": "#f97316",
+      "text_main": "#fee2e2",
+      "text_muted": "#fca5a5",
+      "border": "#3b1a1e",
+      "meter_gradient": "linear-gradient(180deg, #ef4444, #f97316)"
+    }
+  },
+  "amethyst": {
+    "name": "Royal Amethyst",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#130f1c",
+      "bg_card": "#20182f",
+      "accent": "#a855f7",
+      "accent_hover": "#c084fc",
+      "text_main": "#f3e8ff",
+      "text_muted": "#d8b4fe",
+      "border": "#3b2a56",
+      "meter_gradient": "linear-gradient(180deg, #c084fc, #a855f7)"
+    }
+  },
   "catppuccin": {
     "name": "Catppuccin Mocha",
     "isDark": true,
@@ -67,6 +137,20 @@
       "text_muted": "#d8dee9",
       "border": "#3b4252",
       "meter_gradient": "linear-gradient(180deg, #8fbcbb, #88c0d0)"
+    }
+  },
+  "solarized": {
+    "name": "Solarized Dark",
+    "isDark": true,
+    "tokens": {
+      "bg_primary": "#00212b",
+      "bg_card": "#073642",
+      "accent": "#2aa198",
+      "accent_hover": "#b58900",
+      "text_main": "#fdf6e3",
+      "text_muted": "#93a1a1",
+      "border": "#0e4b5c",
+      "meter_gradient": "linear-gradient(180deg, #2aa198, #b58900)"
     }
   }
 }

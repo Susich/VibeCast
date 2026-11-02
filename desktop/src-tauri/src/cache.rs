@@ -134,6 +134,29 @@ impl CacheManager {
         self.inner.cached.lock().map(|set| set.len()).unwrap_or(0)
     }
 
+    pub fn all_cached_ids(&self) -> Vec<String> {
+        let mut ids = HashSet::new();
+        if let Ok(set) = self.inner.cached.lock() {
+            ids.extend(set.iter().cloned());
+        }
+        if let Ok(entries) = std::fs::read_dir(&self.inner.audio_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().and_then(|e| e.to_str()) != Some("part") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if path.metadata().map(|m| m.len() > 0).unwrap_or(false) {
+                            ids.insert(stem.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        if let Ok(mut set) = self.inner.cached.lock() {
+            *set = ids.clone();
+        }
+        ids.into_iter().collect()
+    }
+
     pub fn path_for(&self, track: &Track) -> Option<PathBuf> {
         let id = safe_id(&track.id)?;
         Some(
@@ -473,6 +496,34 @@ impl CacheManager {
             set.clear();
         }
         let _ = self.inner.app.emit("cache://cleared", &stats);
+        Ok(stats)
+    }
+
+    pub fn delete_track(&self, track_id: &str) -> Result<CacheStats, String> {
+        let safe = safe_id(track_id).ok_or_else(|| "Неверный ID трека".to_string())?;
+        if let Ok(entries) = std::fs::read_dir(&self.inner.audio_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if stem == safe {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                    }
+                }
+            }
+        }
+        if let Ok(mut set) = self.inner.cached.lock() {
+            set.remove(track_id);
+        }
+        let stats = self.stats();
+        let _ = self.inner.app.emit(
+            "cache://track_deleted",
+            serde_json::json!({
+                "trackId": track_id,
+                "stats": &stats
+            }),
+        );
         Ok(stats)
     }
 }

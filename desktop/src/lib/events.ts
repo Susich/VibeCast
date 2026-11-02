@@ -1,5 +1,14 @@
-import { listen } from "./api";
-import type { CacheProgress, CacheStats, Device, LibraryStats, PlayerState, ServerView, ToastMessage } from "./types";
+import { call, listen } from "./api";
+import type {
+  CacheProgress,
+  CacheStats,
+  Device,
+  LibraryStats,
+  PlayerState,
+  RemoteCommand,
+  ServerView,
+  ToastMessage,
+} from "./types";
 import { useStore } from "../store";
 
 let bound = false;
@@ -10,6 +19,52 @@ export function bindEvents(): void {
 
   void listen<PlayerState>("player://state", (player) => {
     useStore.getState().onPlayerState(player);
+  });
+
+  void listen<RemoteCommand>("remote-control", async (cmd) => {
+    if (!cmd?.action) return;
+    const store = useStore.getState();
+    switch (cmd.action) {
+      case "toggle":
+        await store.toggle();
+        break;
+      case "play":
+        if (store.player.paused) await store.toggle();
+        break;
+      case "pause":
+        if (!store.player.paused) await store.toggle();
+        break;
+      case "next":
+        await store.next();
+        break;
+      case "prev":
+        await store.prev();
+        break;
+      case "seek":
+        if (typeof cmd.position === "number") {
+          await store.seek(cmd.position);
+        }
+        break;
+      case "volume":
+        if (typeof cmd.volume === "number") {
+          store.setVolume(cmd.volume);
+        }
+        break;
+      case "play_track":
+        if (cmd.trackId) {
+          const found =
+            store.tracks.find((t) => t.id === cmd.trackId) ||
+            store.queue.find((t) => t.id === cmd.trackId);
+          if (found) {
+            store.playTrack(found);
+          } else {
+            void call<PlayerState>("play_track", { trackId: cmd.trackId })
+              .then((player) => store.onPlayerState(player))
+              .catch(() => undefined);
+          }
+        }
+        break;
+    }
   });
 
   void listen<{ trackId?: string }>("player://eof", (payload) => {
@@ -34,6 +89,43 @@ export function bindEvents(): void {
 
   void listen<CacheStats>("cache://cleared", (stats) => {
     useStore.getState().onCacheCleared(stats);
+  });
+
+  void listen<{ trackId: string; stats: CacheStats }>("cache://track_deleted", (payload) => {
+    useStore.getState().onTrackDeleted(payload.trackId, payload.stats);
+  });
+
+  void listen<{ action: string }>("global-hotkey", async (data) => {
+    if (!data?.action) return;
+    const store = useStore.getState();
+
+    // Signal UI to open/reveal HUD and refresh inactivity timer
+    window.dispatchEvent(new CustomEvent("vibecast-hotkey", { detail: { action: data.action } }));
+
+    switch (data.action) {
+      case "toggle":
+        await store.toggle();
+        break;
+      case "next":
+        await store.next();
+        break;
+      case "prev":
+        await store.prev();
+        break;
+      case "volume_up": {
+        const cur = store.player.volume;
+        store.setVolume(Math.min(100, Math.round(cur + 3)));
+        break;
+      }
+      case "volume_down": {
+        const cur = store.player.volume;
+        store.setVolume(Math.max(0, Math.round(cur - 3)));
+        break;
+      }
+      case "toggle_overlay":
+        await store.toggleOverlay();
+        break;
+    }
   });
 
   void listen<ToastMessage>("app://toast", (toast) => {

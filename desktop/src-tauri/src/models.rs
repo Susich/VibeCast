@@ -99,20 +99,27 @@ pub struct Settings {
     pub mpv_path: Option<String>,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_cache_mode")]
+    pub cache_mode: String,
 }
 
-fn default_theme() -> String {
-    "cyberpunk".to_string()
+fn default_cache_mode() -> String {
+    "auto".to_string()
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            volume: 80.0,
+            volume: 100.0,
             mpv_path: None,
             theme: default_theme(),
+            cache_mode: default_cache_mode(),
         }
     }
+}
+
+fn default_theme() -> String {
+    "cyberpunk".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -130,6 +137,7 @@ pub struct AppConfig {
     pub volume: f64,
     pub mpv_path: Option<String>,
     pub overlay: OverlayState,
+    pub cache_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -242,3 +250,24 @@ pub struct Toast {
     /// "info" | "error" | "success"
     pub level: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteCommand {
+    pub action: String,
+    pub position: Option<f64>,
+    pub volume: Option<f64>,
+    pub track_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfo {
+    pub has_update: bool,
+    pub current_version: String,
+    pub latest_version: String,
+    pub release_url: String,
+    pub download_url: Option<String>,
+    pub release_notes: Option<String>,
+}
+

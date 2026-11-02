@@ -172,10 +172,13 @@ class ServerService : Service() {
             }
 
             val port = findAvailablePort(TokenStore.DEFAULT_PORT)
+            val covers = CoverStore(applicationContext, repo)
+            ServerRuntime.repository = repo
+            ServerRuntime.coverStore = covers
             val dataSource = AndroidDataSource(
                 context = applicationContext,
                 repository = repo,
-                covers = CoverStore(applicationContext, repo),
+                covers = covers,
             )
             val engine = embeddedServer(CIO, port = port, host = "0.0.0.0") {
                 vibeCastModule(
@@ -185,6 +188,7 @@ class ServerService : Service() {
                         appVersion = BuildConfig.VERSION_NAME,
                     ),
                     hub = hub,
+                    remoteHub = ServerRuntime.remoteHub,
                 )
             }
             engine.start(wait = false)

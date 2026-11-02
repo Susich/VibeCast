@@ -1,11 +1,17 @@
 package com.vibecast.app.service
 
+import com.vibecast.app.data.CatalogRepository
+import com.vibecast.app.data.CoverStore
+import com.vibecast.shared.PlayerStateDto
+import com.vibecast.shared.RemoteCommandDto
+import com.vibecast.shared.server.RemoteControlHub
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-/** Наблюдаемое состояние сервера для Compose UI (живёт в процессе приложения). */
+/** Наблюдаемое состояние сервера и пульт управления для Compose UI (живёт в процессе приложения). */
 object ServerRuntime {
 
     data class State(
@@ -25,6 +31,21 @@ object ServerRuntime {
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
+    val remoteHub = RemoteControlHub()
+    val playerState: SharedFlow<PlayerStateDto?> = remoteHub.playerState
+
+    @Volatile
+    var repository: CatalogRepository? = null
+        internal set
+
+    @Volatile
+    var coverStore: CoverStore? = null
+        internal set
+
+    fun sendCommand(cmd: RemoteCommandDto) {
+        remoteHub.sendCommand(cmd)
+    }
+
     internal fun update(transform: (State) -> State) {
         _state.update(transform)
     }
@@ -35,3 +56,4 @@ object ServerRuntime {
 
     internal fun current(): State = _state.value
 }
+

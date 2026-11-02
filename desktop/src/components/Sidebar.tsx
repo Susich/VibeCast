@@ -1,20 +1,14 @@
-import { useRef } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-
 import { formatCount } from "../lib/format";
 import { useStore } from "../store";
-import { Cover } from "./Cover";
 import {
   DiscIcon,
   DownloadIcon,
   ListMusicIcon,
   MusicIcon,
-  QueueIcon,
   RadioIcon,
   ServerIcon,
   SmartphoneIcon,
   UsersIcon,
-  WifiOffIcon,
 } from "./Icons";
 
 function hostOf(baseUrl: string): string {
@@ -26,60 +20,35 @@ export function Sidebar() {
   const stats = useStore((state) => state.stats);
   const cachedCount = useStore((state) => state.cachedCount);
   const view = useStore((state) => state.view);
-  const facets = useStore((state) => state.facets);
-  const search = useStore((state) => state.search);
   const queue = useStore((state) => state.queue);
   const queueIndex = useStore((state) => state.queueIndex);
   const navigate = useStore((state) => state.navigate);
-  const selectArtist = useStore((state) => state.selectArtist);
-  const selectAlbum = useStore((state) => state.selectAlbum);
-  const playQueueItem = useStore((state) => state.playQueueItem);
   const openConnect = useStore((state) => state.openConnect);
-  const openSettings = useStore((state) => state.openSettings);
   const toggleQueue = useStore((state) => state.toggleQueue);
   const displayName = server?.deviceName ?? "VibeCast";
 
-  const needle = search.trim().toLocaleLowerCase("ru");
-  const artists = needle
-    ? facets.artists.filter((item) => item.name.toLocaleLowerCase("ru").includes(needle))
-    : facets.artists;
-  const albums = needle
-    ? facets.albums.filter((item) =>
-        `${item.album} ${item.artist}`.toLocaleLowerCase("ru").includes(needle),
-      )
-    : facets.albums;
-
-  const listRef = useRef<HTMLDivElement>(null);
-  const isArtists = view === "artists";
-  const isAlbums = view === "albums";
-  const rows = isArtists ? artists.length : isAlbums ? albums.length : 0;
-  const virtualizer = useVirtualizer({
-    count: rows,
-    getScrollElement: () => listRef.current,
-    estimateSize: () => (isAlbums ? 58 : 42),
-    overscan: 8,
-  });
-
-  const upcoming = queue
-    .map((track, index) => ({ track, index }))
-    .filter((item) => item.index > queueIndex)
-    .slice(0, 3);
+  const queueRemaining = Math.max(0, queue.length - (queueIndex + 1));
 
   return (
     <aside className="sidebar">
+      {/* Brand */}
       <div className="brand">
         <div className="brand-mark">
-          <RadioIcon size={19} />
+          <img src="/logo.png" alt="VibeCast" className="brand-logo-img" />
         </div>
-        <div>
+        <div className="brand-text">
           <div className="brand-name">VibeCast</div>
-          <div className="brand-sub">музыка с телефона</div>
         </div>
       </div>
 
-      <button className={`server-card ${server?.online ? "online" : ""}`} onClick={openConnect} title="Подключить телефон">
+      {/* Connection Status Pill */}
+      <button
+        className={`server-card ${server?.online ? "online" : ""}`}
+        onClick={openConnect}
+        title={server?.online ? `Подключено: ${displayName}` : "Подключить телефон"}
+      >
         <div className="server-phone">
-          {server ? <SmartphoneIcon size={20} /> : <ServerIcon size={20} />}
+          {server ? <SmartphoneIcon size={18} /> : <ServerIcon size={18} />}
         </div>
         <div className="server-copy">
           <div className="server-name">{displayName}</div>
@@ -87,136 +56,68 @@ export function Sidebar() {
             {server
               ? server.online
                 ? hostOf(server.baseUrl)
-                : "телефон недоступен"
-              : "телефон не подключён"}
+                : "не в сети"
+              : "не подключён"}
           </div>
         </div>
         <span className={`status-dot ${server?.online ? "live" : "idle"}`} />
       </button>
 
+      {/* Main Navigation */}
       <nav className="nav">
-        <button className={`nav-item ${view === "tracks" ? "active" : ""}`} onClick={() => navigate("tracks")}>
+        <button
+          className={`nav-item ${view === "tracks" ? "active" : ""}`}
+          onClick={() => navigate("tracks")}
+        >
           <MusicIcon size={18} />
           <span>Все треки</span>
-          <em>{stats.tracks || ""}</em>
+          {stats.tracks > 0 && <em>{stats.tracks}</em>}
         </button>
-        <button className={`nav-item ${view === "cached" ? "active" : ""}`} onClick={() => navigate("cached")}>
+
+        <button
+          className={`nav-item ${view === "cached" ? "active" : ""}`}
+          onClick={() => navigate("cached")}
+        >
           <DownloadIcon size={18} />
           <span>В кэше</span>
-          <em>{cachedCount || ""}</em>
+          {cachedCount > 0 && <em>{cachedCount}</em>}
         </button>
-        <button className={`nav-item ${view === "artists" ? "active" : ""}`} onClick={() => navigate("artists")}>
+
+        <button
+          className={`nav-item ${view === "artists" ? "active" : ""}`}
+          onClick={() => navigate("artists")}
+        >
           <UsersIcon size={18} />
           <span>Исполнители</span>
-          <em>{stats.artists || ""}</em>
+          {stats.artists > 0 && <em>{stats.artists}</em>}
         </button>
-        <button className={`nav-item ${view === "albums" ? "active" : ""}`} onClick={() => navigate("albums")}>
+
+        <button
+          className={`nav-item ${view === "albums" ? "active" : ""}`}
+          onClick={() => navigate("albums")}
+        >
           <DiscIcon size={18} />
           <span>Альбомы</span>
-          <em>{stats.albums || ""}</em>
+          {stats.albums > 0 && <em>{stats.albums}</em>}
         </button>
       </nav>
 
-      <div className="sidebar-section-head">
-        <span>
-          {isArtists ? "Исполнители" : isAlbums ? "Альбомы" : view === "cached" ? "Офлайн-кэш" : "Библиотека"}
-        </span>
-        <span className="sidebar-section-count">
-          {isArtists ? rows : isAlbums ? rows : view === "cached" ? cachedCount : stats.tracks}
-        </span>
-      </div>
+      {/* Spacer to push footer to bottom */}
+      <div className="sidebar-spacer" />
 
-      <div className="sidebar-scroll" ref={listRef}>
-        {isArtists && (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualizer.getVirtualItems().map((item) => {
-              const artist = artists[item.index];
-              if (!artist) return null;
-              return (
-                <button
-                  key={artist.name}
-                  className="facet-row"
-                  style={{ transform: `translateY(${item.start}px)`, height: item.size }}
-                  onClick={() => selectArtist(artist.name)}
-                >
-                  <span className="facet-avatar">{artist.name.slice(0, 1).toUpperCase()}</span>
-                  <span className="facet-name">{artist.name}</span>
-                  <span className="facet-count">{artist.count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+      {/* Optional Queue indicator if tracks are queued */}
+      {queueRemaining > 0 && (
+        <button className="queue-quick-btn" onClick={toggleQueue} title="Открыть очередь воспроизведения">
+          <ListMusicIcon size={16} />
+          <span>В очереди: {queueRemaining}</span>
+        </button>
+      )}
 
-        {isAlbums && (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualizer.getVirtualItems().map((item) => {
-              const album = albums[item.index];
-              if (!album) return null;
-              return (
-                <button
-                  key={`${album.artist}:${album.album}`}
-                  className="album-mini"
-                  style={{ transform: `translateY(${item.start}px)`, height: item.size }}
-                  onClick={() => selectAlbum(album.album, album.artist)}
-                >
-                  {album.coverTrackId ? (
-                    <Cover trackId={album.coverTrackId} title={album.album} size={38} />
-                  ) : (
-                    <div className="cover cover-empty" style={{ width: 38, height: 38 }}>
-                      <DiscIcon size={16} />
-                    </div>
-                  )}
-                  <span className="album-mini-copy">
-                    <span className="album-mini-title">{album.album}</span>
-                    <span className="album-mini-artist">{album.artist}</span>
-                  </span>
-                  <span className="facet-count">{album.count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {!isArtists && !isAlbums && (
-          <div className="sidebar-panels">
-            {upcoming.length > 0 && (
-              <>
-                <div className="queue-preview-head">
-                  <span>Дальше в очереди</span>
-                  <button className="icon-button tiny" onClick={toggleQueue} title="Открыть очередь">
-                    <ListMusicIcon size={16} />
-                  </button>
-                </div>
-                <div className="queue-preview">
-                  {upcoming.map(({ track, index }) => (
-                    <button key={`${track.id}:${index}`} className="queue-mini" onClick={() => playQueueItem(index)}>
-                      <Cover trackId={track.id} title={track.album} size={30} />
-                      <span>
-                        <b>{track.title}</b>
-                        <small>{track.artist}</small>
-                      </span>
-                      <QueueIcon size={14} />
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {!server && (
-              <div className="sidebar-note">
-                <WifiOffIcon size={17} />
-                <span>Телефон не подключён. Треки из кэша доступны для воспроизведения офлайн.</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
+      {/* Sleek Minimal Footer */}
       <div className="sidebar-foot">
-        <span>VibeCast 0.1.0</span>
+        <span>VibeCast</span>
         <span className="foot-dot" />
-        <span>локальная сеть</span>
+        <span>v0.1.0</span>
       </div>
     </aside>
   );

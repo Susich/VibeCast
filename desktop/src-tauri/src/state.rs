@@ -51,7 +51,11 @@ impl AppState {
             .get_setting("theme")
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "cyberpunk".to_string());
-        let settings = Settings { volume, mpv_path, theme };
+        let cache_mode = db
+            .get_setting("cache_mode")
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "auto".to_string());
+        let settings = Settings { volume, mpv_path, theme, cache_mode };
 
         let http = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(5))

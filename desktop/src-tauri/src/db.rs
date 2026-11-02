@@ -343,6 +343,26 @@ impl Db {
         .map_err(db_err)
     }
 
+    pub fn get_tracks_by_ids(&self, ids: &[String]) -> Result<Vec<Track>, String> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.lock()?;
+        let mut results = Vec::new();
+        for chunk in ids.chunks(200) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!("SELECT {TRACK_COLUMNS} FROM tracks WHERE id IN ({placeholders})");
+            let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+            let mapped = stmt
+                .query_map(params_from_iter(chunk.iter()), row_to_track)
+                .map_err(db_err)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(db_err)?;
+            results.extend(mapped);
+        }
+        Ok(results)
+    }
+
     pub fn facets(&self) -> Result<Facets, String> {
         let conn = self.lock()?;
 

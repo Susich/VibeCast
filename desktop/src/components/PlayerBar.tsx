@@ -5,6 +5,7 @@ import { formatTime } from "../lib/format";
 import { useStore } from "../store";
 import { Cover } from "./Cover";
 import {
+  DownloadIcon,
   MusicIcon,
   OverlayIcon,
   PauseIcon,
@@ -12,6 +13,7 @@ import {
   QueueIcon,
   SkipBackIcon,
   SkipForwardIcon,
+  TrashIcon,
   VolumeIcon,
   VolumeOffIcon,
 } from "./Icons";
@@ -28,6 +30,8 @@ export function PlayerBar() {
   const setVolume = useStore((state) => state.setVolume);
   const toggleQueue = useStore((state) => state.toggleQueue);
   const toggleOverlay = useStore((state) => state.toggleOverlay);
+  const cacheTrack = useStore((state) => state.cacheTrack);
+  const deleteCachedTrack = useStore((state) => state.deleteCachedTrack);
 
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState(0);
@@ -61,10 +65,31 @@ export function PlayerBar() {
           <div className="now-title">{player.title ?? "Ничего не играет"}</div>
           <div className="now-sub">
             {player.artist ?? "Выберите трек, чтобы начать"}
-            {player.source && (
-              <span className={`source-badge ${player.source}`}>
-                {player.source === "cache" ? "кэш" : "стрим"}
+            {player.source === "cache" && (
+              <span className="source-badge cache" title="Воспроизводится из локального кэша">
+                кэш
               </span>
+            )}
+            {current && (
+              player.source === "cache" ? (
+                <button
+                  className="icon-button tiny ghost player-cache-btn"
+                  title="Удалить этот трек из кэша"
+                  aria-label="Удалить этот трек из кэша"
+                  onClick={() => void deleteCachedTrack(current)}
+                >
+                  <TrashIcon size={12} />
+                </button>
+              ) : (
+                <button
+                  className="icon-button tiny ghost player-cache-btn"
+                  title="Скачать этот трек в кэш"
+                  aria-label="Скачать этот трек в кэш"
+                  onClick={() => void cacheTrack(current)}
+                >
+                  <DownloadIcon size={12} />
+                </button>
+              )
             )}
           </div>
           {player.error && <div className="now-error">{player.error}</div>}

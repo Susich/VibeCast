@@ -15,11 +15,11 @@
         "title": "VibeCast",
         "width": 1200,
         "height": 620,
-        "minWidth": 960,
-        "minHeight": 560,
         "center": true,
         "resizable": true,
-        "theme": "Dark"
+        "theme": "Dark",
+        "transparent": true,
+        "shadow": false
       }
     ],
     "security": {

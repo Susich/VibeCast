@@ -368,3 +368,22 @@ export function PaletteIcon(props: IconProps) {
     ),
   });
 }
+
+export function MinimizeIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: <path d="M5 12h14" />,
+  });
+}
+
+export function PinIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <path d="M12 17v5" />
+        <path d="M9 2v4l-2 3v2h10v-2l-2-3V2H9Z" fill="none" />
+      </>
+    ),
+  });
+}

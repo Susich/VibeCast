@@ -1,7 +1,6 @@
 package com.vibecast.app.ui
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -11,8 +10,10 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,30 +36,49 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vibecast.app.BuildConfig
+import com.vibecast.app.data.AppUpdateInfo
+import com.vibecast.app.data.CoverStore
+import com.vibecast.app.data.UpdateManager
 import com.vibecast.app.service.ServerRuntime
 import com.vibecast.app.service.ServerService
 import com.vibecast.app.ui.theme.VibeAmber
@@ -68,13 +90,24 @@ import com.vibecast.app.ui.theme.VibeSurface
 import com.vibecast.app.ui.theme.VibeSurfaceHigh
 import com.vibecast.app.ui.theme.VibeText
 import com.vibecast.shared.ConnectionUrl
+import com.vibecast.shared.PlayerStateDto
+import com.vibecast.shared.RemoteCommandDto
+import com.vibecast.shared.TrackDto
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private enum class NavTab(val title: String) {
+    PLAYER("Плеер"),
+    SERVER("Сервер"),
+    SHARE("Поделиться"),
+}
 
 @Composable
 fun VibeCastRoot() {
     val context = LocalContext.current
     var hasAudioAccess by remember { mutableStateOf(context.hasAudioPermission()) }
     val state by ServerRuntime.state.collectAsStateWithLifecycle()
+    var selectedTab by remember { mutableStateOf(NavTab.PLAYER) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -98,16 +131,749 @@ fun VibeCastRoot() {
                 onOpenSettings = { context.openAppSettings() },
             )
         } else {
-            StatusScreen(
-                state = state,
-                onStart = { ServerService.start(context) },
-                onStop = { ServerService.stop(context) },
-                onRescan = { ServerService.rescan(context) },
-                onBatterySettings = { context.openBatterySettings() },
-                onRefreshPermission = { hasAudioAccess = context.hasAudioPermission() },
+            Scaffold(
+                containerColor = VibeBg,
+                bottomBar = {
+                    VibeBottomNav(
+                        currentTab = selectedTab,
+                        onTabSelected = { selectedTab = it },
+                    )
+                },
+            ) { padding ->
+                Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                    when (selectedTab) {
+                        NavTab.PLAYER -> RemotePlayerScreen(
+                            onNavigateToServer = { selectedTab = NavTab.SERVER },
+                        )
+                        NavTab.SERVER -> StatusScreen(
+                            state = state,
+                            onStart = { ServerService.start(context) },
+                            onStop = { ServerService.stop(context) },
+                            onRescan = { ServerService.rescan(context) },
+                            onBatterySettings = { context.openBatterySettings() },
+                            onRefreshPermission = { hasAudioAccess = context.hasAudioPermission() },
+                        )
+                        NavTab.SHARE -> ShareAndUpdatesScreen()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VibeBottomNav(
+    currentTab: NavTab,
+    onTabSelected: (NavTab) -> Unit,
+) {
+    NavigationBar(
+        containerColor = VibeSurface,
+        contentColor = VibeText,
+        tonalElevation = 8.dp,
+    ) {
+        NavTab.values().forEach { tab ->
+            val isSelected = currentTab == tab
+            NavigationBarItem(
+                selected = isSelected,
+                onClick = { onTabSelected(tab) },
+                icon = {
+                    Text(
+                        when (tab) {
+                            NavTab.PLAYER -> "▶"
+                            NavTab.SERVER -> "⇄"
+                            NavTab.SHARE -> "🔗"
+                        },
+                        fontSize = 18.sp,
+                        color = if (isSelected) VibeGreen else VibeMuted,
+                    )
+                },
+                label = {
+                    Text(
+                        tab.title,
+                        color = if (isSelected) VibeGreen else VibeMuted,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = 12.sp,
+                    )
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    indicatorColor = VibeSurfaceHigh,
+                ),
             )
         }
     }
+}
+
+@Composable
+private fun RemotePlayerScreen(
+    onNavigateToServer: () -> Unit,
+) {
+    val playerState by ServerRuntime.playerState.collectAsStateWithLifecycle(initialValue = null)
+    var searchQuery by remember { mutableStateOf("") }
+    val repo = ServerRuntime.repository
+    val tracks = remember(searchQuery, repo, ServerRuntime.current().version) {
+        repo?.page(0, 100, searchQuery)?.tracks ?: emptyList()
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
+    ) {
+        item {
+            Spacer(Modifier.height(24.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("▶", color = Color(0xFF06210F), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Пульт управления ПК", color = VibeText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Управление воспроизведением через Wi-Fi", color = VibeMuted, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+        }
+
+        // Now Playing Card
+        item {
+            NowPlayingCard(player = playerState, onNavigateToServer = onNavigateToServer)
+            Spacer(Modifier.height(24.dp))
+        }
+
+        // Quick Track Library
+        item {
+            Text("Библиотека на телефоне", color = VibeText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Нажмите на любой трек, чтобы включить его на компьютере",
+                color = VibeMuted,
+                fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Поиск трека или исполнителя…", color = VibeMuted) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = VibeGreen,
+                    unfocusedBorderColor = Color(0xFF2A3542),
+                    focusedContainerColor = VibeSurface,
+                    unfocusedContainerColor = VibeSurface,
+                    focusedTextColor = VibeText,
+                    unfocusedTextColor = VibeText,
+                ),
+            )
+            Spacer(Modifier.height(14.dp))
+        }
+
+        if (tracks.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = VibeSurface),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                ) {
+                    Text(
+                        "Треки не найдены",
+                        color = VibeMuted,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(20.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        } else {
+            items(tracks, key = { it.id }) { track ->
+                TrackItem(
+                    track = track,
+                    isPlaying = playerState?.currentTrackId == track.id,
+                    onClick = {
+                        ServerRuntime.sendCommand(RemoteCommandDto(action = "play_track", trackId = track.id))
+                    },
+                )
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingCard(
+    player: PlayerStateDto?,
+    onNavigateToServer: () -> Unit,
+) {
+    val coverStore = ServerRuntime.coverStore
+    val coverBitmap = remember(player?.currentTrackId, coverStore) {
+        loadCoverBitmap(coverStore, player?.currentTrackId)
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = VibeSurface),
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            if (player?.currentTrackId != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Cover Art
+                    Box(
+                        modifier = Modifier
+                            .size(76.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(VibeSurfaceHigh),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (coverBitmap != null) {
+                            Image(
+                                bitmap = coverBitmap,
+                                contentDescription = "Обложка",
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            Text("♪", color = VibeMuted, fontSize = 32.sp)
+                        }
+                    }
+
+                    Spacer(Modifier.width(16.dp))
+
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            player.title ?: "Без названия",
+                            color = VibeText,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            player.artist ?: "Неизвестный исполнитель",
+                            color = VibeMuted,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (!player.paused) VibeGreen.copy(alpha = 0.2f) else VibeAmber.copy(alpha = 0.2f))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    if (!player.paused) "Играет на ПК" else "Пауза",
+                                    color = if (!player.paused) VibeGreen else VibeAmber,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            if (player.source == "cache") {
+                                Spacer(Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF38BDF8).copy(alpha = 0.2f))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                                ) {
+                                    Text("Кэш", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Progress Bar
+                var isDragging by remember { mutableStateOf(false) }
+                var dragValue by remember { mutableFloatStateOf(0f) }
+                val currentPos = if (isDragging) dragValue else player.position.toFloat()
+                val duration = player.duration.toFloat().coerceAtLeast(1f)
+
+                Column {
+                    Slider(
+                        value = currentPos.coerceIn(0f, duration),
+                        onValueChange = {
+                            isDragging = true
+                            dragValue = it
+                        },
+                        onValueChangeFinished = {
+                            isDragging = false
+                            ServerRuntime.sendCommand(RemoteCommandDto(action = "seek", position = dragValue.toDouble()))
+                        },
+                        valueRange = 0f..duration,
+                        colors = SliderDefaults.colors(
+                            thumbColor = VibeGreen,
+                            activeTrackColor = VibeGreen,
+                            inactiveTrackColor = VibeSurfaceHigh,
+                        ),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(formatTime(currentPos.toDouble()), color = VibeMuted, fontSize = 11.sp)
+                        Text(formatTime(duration.toDouble()), color = VibeMuted, fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                // Playback Controls Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ControlButton(text = "⏮", size = 48.dp, fontSize = 20.sp) {
+                        ServerRuntime.sendCommand(RemoteCommandDto(action = "prev"))
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(62.dp)
+                            .clip(CircleShape)
+                            .background(VibeGreen)
+                            .clickable {
+                                ServerRuntime.sendCommand(RemoteCommandDto(action = "toggle"))
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (player.paused) "▶" else "⏸",
+                            color = Color(0xFF06210F),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+
+                    ControlButton(text = "⏭", size = 48.dp, fontSize = 20.sp) {
+                        ServerRuntime.sendCommand(RemoteCommandDto(action = "next"))
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = Color(0xFF223040))
+                Spacer(Modifier.height(14.dp))
+
+                // Volume Slider
+                var volumeValue by remember(player.volume) { mutableFloatStateOf(player.volume.toFloat()) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔊", fontSize = 16.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Slider(
+                        value = volumeValue.coerceIn(0f, 100f),
+                        onValueChange = {
+                            volumeValue = it
+                            ServerRuntime.sendCommand(RemoteCommandDto(action = "volume", volume = it.toDouble()))
+                        },
+                        valueRange = 0f..100f,
+                        modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(
+                            thumbColor = VibeGreen,
+                            activeTrackColor = VibeGreen,
+                            inactiveTrackColor = VibeSurfaceHigh,
+                        ),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "${volumeValue.toInt()}%",
+                        color = VibeMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.width(36.dp),
+                    )
+                }
+            } else {
+                // Waiting / Empty State
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(CircleShape)
+                            .background(VibeSurfaceHigh),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("⇄", color = VibeMuted, fontSize = 28.sp)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "Компьютер в режиме ожидания",
+                        color = VibeText,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Подключите ПК к телефону по Wi-Fi или выберите любой трек из списка ниже, чтобы включить его на ПК.",
+                        color = VibeMuted,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedButton(
+                        onClick = onNavigateToServer,
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("Показать адрес и токен для ПК", color = VibeGreen)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ControlButton(
+    text: String,
+    size: androidx.compose.ui.unit.Dp,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(VibeSurfaceHigh)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = text, color = VibeText, fontSize = fontSize, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun TrackItem(
+    track: TrackDto,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (isPlaying) VibeSurfaceHigh else VibeSurface,
+        ),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isPlaying) VibeGreen.copy(alpha = 0.2f) else Color(0xFF1E2836)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (isPlaying) "▶" else "♪",
+                    color = if (isPlaying) VibeGreen else VibeMuted,
+                    fontSize = 18.sp,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    track.title,
+                    color = if (isPlaying) VibeGreen else VibeText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    track.artist,
+                    color = VibeMuted,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                formatTime(track.durationMs / 1000.0),
+                color = VibeMuted,
+                fontSize = 12.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ShareAndUpdatesScreen() {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var copied by remember { mutableStateOf(false) }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    var updateResult by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var updateError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2000)
+            copied = false
+        }
+    }
+
+    val qrBitmap = remember {
+        QrCodeGenerator.generate(UpdateManager.GITHUB_REPO_URL, 600)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("🔗", fontSize = 18.sp)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("Поделиться приложением", color = VibeText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("QR-код на репозиторий и обновления", color = VibeMuted, fontSize = 12.sp)
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // QR Code Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = VibeSurface),
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    "Отсканируйте камерой телефона",
+                    color = VibeText,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Чтобы открыть репозиторий проекта на GitHub и установить VibeCast на ПК или телефон.",
+                    color = VibeMuted,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(18.dp))
+
+                // QR Container with white padding
+                Box(
+                    modifier = Modifier
+                        .size(230.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.White)
+                        .padding(14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (qrBitmap != null) {
+                        Image(
+                            bitmap = qrBitmap,
+                            contentDescription = "QR Code на GitHub",
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Text("Ошибка генерации QR", color = Color.Black, fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    UpdateManager.GITHUB_REPO_URL,
+                    color = VibeGreen,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(Modifier.height(18.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Button(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(UpdateManager.GITHUB_REPO_URL))
+                            copied = true
+                        },
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = VibeSurfaceHigh),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(if (copied) "Скопировано!" else "Копировать", color = VibeText, fontSize = 13.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(
+                                    Intent.EXTRA_TEXT,
+                                    "Слушай музыку с телефона на компьютере по Wi-Fi с помощью VibeCast! Репозиторий и загрузка: ${UpdateManager.GITHUB_REPO_URL}",
+                                )
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "Поделиться VibeCast"))
+                        },
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = VibeGreen),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("Поделиться", color = Color(0xFF06210F), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        // Updates Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = VibeSurface),
+            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔄", fontSize = 18.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Обновления приложения", color = VibeText, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        Text("Текущая версия: v${BuildConfig.VERSION_NAME}", color = VibeMuted, fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                Button(
+                    onClick = {
+                        checkingUpdate = true
+                        updateError = null
+                        coroutineScope.launch {
+                            val res = UpdateManager.checkForUpdates()
+                            checkingUpdate = false
+                            res.onSuccess { updateResult = it }
+                                .onFailure { updateError = it.message ?: "Ошибка проверки" }
+                        }
+                    },
+                    enabled = !checkingUpdate,
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = VibeSurfaceHigh),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        if (checkingUpdate) "Проверяю обновления…" else "Проверить обновления",
+                        color = VibeGreen,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+
+                if (updateError != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Banner(text = updateError.orEmpty(), color = VibeRed)
+                }
+
+                if (updateResult != null) {
+                    val res = updateResult!!
+                    Spacer(Modifier.height(12.dp))
+                    if (res.hasUpdate) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = VibeSurfaceHigh),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(
+                                    "Доступна новая версия: v${res.latestVersion}!",
+                                    color = VibeGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                )
+                                if (!res.releaseNotes.isNullOrBlank()) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        res.releaseNotes,
+                                        color = VibeMuted,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                Button(
+                                    onClick = {
+                                        val apkTarget = res.apkDownloadUrl ?: res.releaseUrl
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(apkTarget)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(intent)
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = VibeGreen),
+                                    shape = RoundedCornerShape(10.dp),
+                                ) {
+                                    Text("Скачать обновление (APK)", color = Color(0xFF06210F), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else {
+                        Banner(
+                            text = "У вас установлена последняя версия VibeCast (v${BuildConfig.VERSION_NAME}).",
+                            color = VibeGreen,
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(30.dp))
+    }
+}
+
+private fun formatTime(seconds: Double): String {
+    val total = seconds.toLong().coerceAtLeast(0)
+    val mins = total / 60
+    val secs = total % 60
+    return "%02d:%02d".format(mins, secs)
+}
+
+private fun loadCoverBitmap(coverStore: CoverStore?, trackId: String?): ImageBitmap? {
+    if (coverStore == null || trackId == null) return null
+    val data = coverStore.cover(trackId) ?: return null
+    return runCatching {
+        android.graphics.BitmapFactory.decodeByteArray(data.bytes, 0, data.bytes.size)?.asImageBitmap()
+    }.getOrNull()
 }
 
 @Composable
@@ -153,7 +919,7 @@ private fun PermissionScreen(onRequest: () -> Unit, onOpenSettings: () -> Unit) 
                 Text("Нужен доступ к аудио", color = VibeText, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "VibeCast читает локальные аудиофайлы через MediaStore, чтобы показать их на ПК. " +
+                    "VibeCast читает локальные аудиофайлы через MediaStore, чтобы воспроизводить их на ПК. " +
                         "Файлы не загружаются в интернет — передача идёт только по вашему Wi-Fi.",
                     color = VibeMuted,
                     fontSize = 14.sp,
@@ -214,7 +980,7 @@ private fun StatusScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 48.dp),
+            .padding(horizontal = 20.dp, vertical = 24.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -229,11 +995,11 @@ private fun StatusScreen(
             Spacer(Modifier.width(12.dp))
             Column {
                 Text("VibeCast", color = VibeText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("Android → ПК", color = VibeMuted, fontSize = 12.sp)
+                Text("Сервер библиотеки для ПК", color = VibeMuted, fontSize = 12.sp)
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
         StatusCard(state)
 
         AnimatedVisibility(visible = state.error != null) {
@@ -337,6 +1103,8 @@ private fun StatusScreen(
                 )
             }
         }
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -568,12 +1336,5 @@ private fun Context.openBatterySettings() {
                 Uri.parse("package:$packageName"),
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
-    }.onFailure {
-        runCatching {
-            startActivity(
-                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
     }
 }

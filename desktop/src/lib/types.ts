@@ -58,6 +58,7 @@ export interface Settings {
   volume: number;
   mpvPath: string | null;
   theme?: string;
+  cacheMode?: "auto" | "manual";
 }
 
 export interface OverlayState {
@@ -71,6 +72,7 @@ export interface AppConfig {
   volume: number;
   mpvPath: string | null;
   overlay: OverlayState;
+  cacheMode?: "auto" | "manual";
 }
 
 export interface LibraryStats {
@@ -140,6 +142,22 @@ export interface CacheProgress {
 export interface ToastMessage {
   message: string;
   level: "info" | "success" | "error";
+}
+
+export interface RemoteCommand {
+  action: "play" | "pause" | "toggle" | "next" | "prev" | "seek" | "volume" | "play_track";
+  position?: number | null;
+  volume?: number | null;
+  trackId?: string | null;
+}
+
+export interface UpdateInfo {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  releaseUrl: string;
+  downloadUrl?: string | null;
+  releaseNotes?: string | null;
 }
 
 export type ViewKind = "tracks" | "cached" | "artists" | "albums";

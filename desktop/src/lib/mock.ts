@@ -430,6 +430,24 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       emit("cache://cleared", result);
       return result as T;
     }
+    case "delete_cached_track": {
+      const trackId = String(input.track_id ?? input.trackId ?? "");
+      cachedIds.delete(trackId);
+      const result = cacheStats();
+      emit("cache://track_deleted", { trackId, stats: result });
+      return result as T;
+    }
+    case "cache_track": {
+      const trackId = String(input.track_id ?? input.trackId ?? "");
+      cachedIds.add(trackId);
+      const result = cacheStats();
+      emit("cache://progress", { trackId, received: 100, total: 100, done: true });
+      return undefined as T;
+    }
+    case "set_cache_mode": {
+      const mode = String(input.mode ?? "auto");
+      return mode as T;
+    }
     case "disconnect": {
       server = null;
       emit("server://changed", null);

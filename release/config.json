@@ -1,13 +1,14 @@
 {
+  "cacheMode": "auto",
   "mpvPath": null,
   "overlay": {
     "alwaysOnTop": true,
     "height": 140,
-    "isOverlay": false,
-    "lastX": 466,
-    "lastY": 146,
+    "isOverlay": true,
+    "lastX": 10,
+    "lastY": 10,
     "width": 380
   },
-  "theme": "catppuccin",
-  "volume": 84.0
+  "theme": "tokyo",
+  "volume": 55.0
 }

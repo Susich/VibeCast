@@ -2,8 +2,10 @@
   "theme": "cyberpunk",
   "volume": 80.0,
   "mpvPath": null,
+  "cacheMode": "auto",
   "overlay": {
     "alwaysOnTop": true,
+    "isOverlay": false,
     "lastX": null,
     "lastY": null,
     "width": 380,

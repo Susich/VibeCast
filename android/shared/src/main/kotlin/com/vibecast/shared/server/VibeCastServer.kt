@@ -4,8 +4,10 @@ import com.vibecast.shared.CoverData
 import com.vibecast.shared.ErrorDto
 import com.vibecast.shared.HealthDto
 import com.vibecast.shared.LibraryPage
+import com.vibecast.shared.PlayerStateDto
 import com.vibecast.shared.RangeParser
 import com.vibecast.shared.RangeRequest
+import com.vibecast.shared.RemoteCommandDto
 import com.vibecast.shared.TrackDto
 import com.vibecast.shared.TrackPage
 import com.vibecast.shared.BearerAuth
@@ -65,6 +67,41 @@ class SseHub {
     }
 }
 
+/** Хаб управления воспроизведением: приём команд от телефона и трансляция на ПК через SSE. */
+class RemoteControlHub {
+    private val _commands = MutableSharedFlow<RemoteCommandDto>(
+        replay = 0,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val commands: SharedFlow<RemoteCommandDto> = _commands.asSharedFlow()
+
+    private val _playerState = MutableSharedFlow<PlayerStateDto?>(
+        replay = 1,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val playerState: SharedFlow<PlayerStateDto?> = _playerState.asSharedFlow()
+
+    @Volatile
+    private var lastState: PlayerStateDto? = null
+
+    init {
+        _playerState.tryEmit(null)
+    }
+
+    fun currentState(): PlayerStateDto? = lastState
+
+    fun sendCommand(cmd: RemoteCommandDto) {
+        _commands.tryEmit(cmd)
+    }
+
+    fun updatePlayerState(state: PlayerStateDto) {
+        lastState = state
+        _playerState.tryEmit(state)
+    }
+}
+
 fun sseVersionPayload(version: Long): String =
     "event: version\ndata: {\"version\":$version}\n\n"
 
@@ -78,6 +115,7 @@ fun io.ktor.server.application.Application.vibeCastModule(
     data: VibeCastDataSource,
     config: ServerConfig,
     hub: SseHub,
+    remoteHub: RemoteControlHub = RemoteControlHub(),
 ) {
     install(ContentNegotiation) {
         json(Json {
@@ -160,6 +198,56 @@ fun io.ktor.server.application.Application.vibeCastModule(
                         last = next
                         write(sseVersionPayload(next))
                         flush()
+                    }
+                }
+            }
+        }
+
+        route("/remote") {
+            // ПК передаёт текущий статус воспроизведения
+            post("/state") {
+                if (!call.authorized(config.token)) return@post
+                val state = call.receive<PlayerStateDto>()
+                remoteHub.updatePlayerState(state.copy(updatedAt = System.currentTimeMillis()))
+                call.respond(HttpStatusCode.OK)
+            }
+
+            // Получить актуальный статус воспроизведения на ПК
+            get("/state") {
+                if (!call.authorized(config.token)) return@get
+                val state = remoteHub.currentState() ?: PlayerStateDto()
+                call.respond(state)
+            }
+
+            // Отправить команду на ПК (play, pause, next, prev, seek, volume, play_track)
+            post("/command") {
+                if (!call.authorized(config.token)) return@post
+                val cmd = call.receive<RemoteCommandDto>()
+                remoteHub.sendCommand(cmd)
+                call.respond(HttpStatusCode.OK)
+            }
+
+            // SSE-поток для ПК: ПК слушает команды с телефона в реальном времени
+            get("/events") {
+                if (!call.authorized(config.token)) return@get
+                call.response.header(HttpHeaders.CacheControl, "no-cache")
+                call.response.header("X-Accel-Buffering", "no")
+                call.respondTextWriter(ContentType.Text.EventStream) {
+                    write(": ping\n\n")
+                    flush()
+                    val json = Json { ignoreUnknownKeys = true }
+                    while (true) {
+                        val cmd = withTimeoutOrNull(15_000) {
+                            remoteHub.commands.first()
+                        }
+                        if (cmd == null) {
+                            write(SSE_HEARTBEAT)
+                            flush()
+                        } else {
+                            val payload = json.encodeToString(RemoteCommandDto.serializer(), cmd)
+                            write("data: $payload\n\n")
+                            flush()
+                        }
                     }
                 }
             }

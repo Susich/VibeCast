@@ -19,88 +19,40 @@ function ViewHeader() {
   const artist = useStore((state) => state.artist);
   const album = useStore((state) => state.album);
   const total = useStore((state) => state.total);
-  const stats = useStore((state) => state.stats);
   const facets = useStore((state) => state.facets);
   const clearFilters = useStore((state) => state.clearFilters);
   const loading = useStore((state) => state.loading);
 
+  let title = "Все треки";
+  let countStr = formatCount(total, "трек", "трека", "треков");
+
   if (view === "cached") {
-    return (
-      <div className="view-header">
-        <div>
-          <span className="eyebrow">Офлайн-доступ</span>
-          <h1>В кэше</h1>
-          <p>
-            {loading
-              ? "Загрузка…"
-              : `${formatCount(total, "трек", "трека", "треков")} · доступно без интернета`}
-          </p>
-        </div>
-        <div className="view-mark">
-          <DownloadIcon size={30} />
-        </div>
-      </div>
-    );
+    title = "В кэше";
+    countStr = formatCount(total, "трек", "трека", "треков");
+  } else if (view === "artists") {
+    title = "Исполнители";
+    countStr = formatCount(facets.artists.length, "исполнитель", "исполнителя", "исполнителей");
+  } else if (view === "albums") {
+    title = "Альбомы";
+    countStr = formatCount(facets.albums.length, "альбом", "альбома", "альбомов");
+  } else if (album) {
+    title = album;
+  } else if (artist) {
+    title = artist;
   }
-
-  if (view === "artists") {
-    return (
-      <div className="view-header">
-        <div>
-          <span className="eyebrow">Библиотека</span>
-          <h1>Исполнители</h1>
-          <p>
-            {formatCount(facets.artists.length, "исполнитель", "исполнителя", "исполнителей")} ·{" "}
-            {formatCount(stats.tracks, "трек", "трека", "треков")}
-          </p>
-        </div>
-        <div className="view-mark">
-          <UsersIcon size={30} />
-        </div>
-      </div>
-    );
-  }
-
-  if (view === "albums") {
-    return (
-      <div className="view-header">
-        <div>
-          <span className="eyebrow">Библиотека</span>
-          <h1>Альбомы</h1>
-          <p>
-            {formatCount(facets.albums.length, "альбом", "альбома", "альбомов")} ·{" "}
-            {formatCount(stats.tracks, "трек", "трека", "треков")}
-          </p>
-        </div>
-        <div className="view-mark">
-          <DiscIcon size={30} />
-        </div>
-      </div>
-    );
-  }
-
-  const title = album ?? artist ?? "Все треки";
-  const subtitle = album && artist ? artist : artist ? "Все треки исполнителя" : "Ваша локальная библиотека";
 
   return (
     <div className="view-header">
-      <div>
-        <span className="eyebrow">{album ? "Альбом" : artist ? "Исполнитель" : "Библиотека"}</span>
+      <div className="view-header-main">
         <h1>{title}</h1>
-        <p>
-          {loading ? "Обновляем…" : `${formatCount(total, "трек", "трека", "треков")} · ${subtitle}`}
-          {stats.version > 0 && <span className="version-pill">v{stats.version}</span>}
-        </p>
-        {(artist || album) && (
-          <button className="filter-chip" onClick={clearFilters}>
-            {album && artist ? `${artist} — ${album}` : album ?? artist}
-            <XIcon size={13} />
-          </button>
-        )}
+        <span className="view-count">{loading ? "…" : countStr}</span>
       </div>
-      <div className="view-mark">
-        {album ? <DiscIcon size={30} /> : artist ? <UsersIcon size={30} /> : <MusicIcon size={30} />}
-      </div>
+      {(artist || album) && view === "tracks" && (
+        <button className="filter-chip" onClick={clearFilters} title="Сбросить фильтр">
+          {album && artist ? `${artist} — ${album}` : album ?? artist}
+          <XIcon size={12} />
+        </button>
+      )}
     </div>
   );
 }
@@ -121,7 +73,7 @@ function Splash() {
   return (
     <div className="splash">
       <div className="splash-logo">
-        <RadioIcon size={34} />
+        <img src="/logo.png" alt="VibeCast" className="splash-logo-img" />
       </div>
       <h1>VibeCast</h1>
       <p>Музыка с телефона — на этом компьютере.</p>
@@ -168,6 +120,11 @@ export default function App() {
   useEffect(() => {
     void init();
   }, [init]);
+
+  useEffect(() => {
+    document.body.classList.toggle("is-overlay", isOverlay);
+    document.documentElement.classList.toggle("is-overlay", isOverlay);
+  }, [isOverlay]);
 
   useEffect(() => {
     if (!booted) return;
@@ -223,9 +180,8 @@ export default function App() {
 
   if (isOverlay) {
     return (
-      <div className="overlay-root">
+      <div className="overlay-root" style={{ background: "transparent" }}>
         <MiniOverlay />
-        <Toasts />
       </div>
     );
   }
@@ -239,7 +195,7 @@ export default function App() {
         <main className="content">
           <ViewHeader />
           {loading && <div className="refresh-line" />}
-          {view === "tracks" && <TrackList />}
+          {(view === "tracks" || view === "cached") && <TrackList />}
           {view === "artists" && <ArtistsView />}
           {view === "albums" && <AlbumsView />}
         </main>
