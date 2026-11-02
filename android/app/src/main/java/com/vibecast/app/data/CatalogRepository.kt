@@ -15,14 +15,14 @@ data class ScanOutcome(
     val changed: Boolean,
 )
 
-enum class TrackSort(val title: String) {
-    TITLE_ASC("По названию (А-Я)"),
-    TITLE_DESC("По названию (Я-А)"),
-    ARTIST_ASC("По артисту"),
-    DURATION_DESC("Сначала длинные"),
-    DURATION_ASC("Сначала короткие"),
-    DATE_DESC("Сначала новые"),
-    DATE_ASC("Сначала старые"),
+enum class TrackSort(val title: String, val shortTitle: String) {
+    TITLE_ASC("По названию (А-Я)", "Название (А-Я)"),
+    TITLE_DESC("По названию (Я-А)", "Название (Я-А)"),
+    ARTIST_ASC("По артисту", "По артисту"),
+    DURATION_DESC("Сначала длинные", "Длинные"),
+    DURATION_ASC("Сначала короткие", "Короткие"),
+    DATE_DESC("Сначала новые", "Сначала новые"),
+    DATE_ASC("Сначала старые", "Сначала старые"),
 }
 
 /**

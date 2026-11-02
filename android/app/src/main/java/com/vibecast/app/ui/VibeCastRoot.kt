@@ -36,19 +36,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.VolumeMute
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Headphones
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Sensors
@@ -56,7 +54,6 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.SystemUpdate
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Update
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -121,7 +118,6 @@ import com.vibecast.app.service.ServerService
 import com.vibecast.app.ui.theme.VibeAmber
 import com.vibecast.app.ui.theme.VibeBg
 import com.vibecast.app.ui.theme.VibeGreen
-import com.vibecast.app.ui.theme.VibeGreenDark
 import com.vibecast.app.ui.theme.VibeMuted
 import com.vibecast.app.ui.theme.VibeRed
 import com.vibecast.app.ui.theme.VibeSurface
@@ -235,7 +231,7 @@ private fun VibeBottomNav(
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = VibeSurfaceHigh,
+                    indicatorColor = Color(0xFF162E22),
                 ),
             )
         }
@@ -282,10 +278,11 @@ private fun RemotePlayerScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 18.dp),
+            .padding(horizontal = 16.dp),
     ) {
+        // App / Screen Header
         item {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(18.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
@@ -294,9 +291,7 @@ private fun RemotePlayerScreen(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE))),
-                        ),
+                        .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -321,137 +316,67 @@ private fun RemotePlayerScreen(
                     )
                 }
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
         }
 
         // Now Playing Card
         item {
             NowPlayingCard(player = playerState, onNavigateToServer = onNavigateToServer)
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(20.dp))
         }
 
-        // Library Header & Filter Controls
+        // Library Header
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
+                Text(
+                    "Медиатека",
+                    color = VibeText,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Surface(
+                    color = VibeSurfaceHigh,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.border(1.dp, Color(0xFF223040), RoundedCornerShape(8.dp)),
+                ) {
                     Text(
-                        "Медиатека на телефоне",
-                        color = VibeText,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        "Треков: ${runtimeState.trackCount}",
+                        text = "${runtimeState.trackCount} треков",
                         color = VibeMuted,
                         fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     )
                 }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Folder Selector Button
-                    Button(
-                        onClick = { showFolderDialog = true },
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedFolders.isNotEmpty()) VibeGreenDark else VibeSurfaceHigh,
-                            contentColor = if (selectedFolders.isNotEmpty()) Color.White else VibeText,
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.height(34.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Folder,
-                            contentDescription = "Папки",
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = if (selectedFolders.isEmpty()) "Папки" else "Папки (${selectedFolders.size})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-
-                    // Sort Filter Button
-                    Box {
-                        Button(
-                            onClick = { showSortMenu = true },
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = VibeSurfaceHigh,
-                                contentColor = VibeText,
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.height(34.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.Sort,
-                                contentDescription = "Сортировка",
-                                modifier = Modifier.size(16.dp),
-                                tint = VibeGreen,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "Фильтр",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false },
-                            modifier = Modifier.background(VibeSurfaceHigh),
-                        ) {
-                            TrackSort.values().forEach { sort ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (currentSort == sort) {
-                                                Icon(
-                                                    imageVector = Icons.Rounded.Check,
-                                                    contentDescription = null,
-                                                    tint = VibeGreen,
-                                                    modifier = Modifier.size(16.dp),
-                                                )
-                                                Spacer(Modifier.width(8.dp))
-                                            } else {
-                                                Spacer(Modifier.width(24.dp))
-                                            }
-                                            Text(
-                                                sort.title,
-                                                color = if (currentSort == sort) VibeGreen else VibeText,
-                                                fontSize = 13.sp,
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        currentSort = sort
-                                        showSortMenu = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
             }
-            Spacer(Modifier.height(10.dp))
 
-            // Search Bar
+            Spacer(Modifier.height(8.dp))
+
+            // Full-Width Sleek Search Field
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Поиск трека, артиста или альбома…", color = VibeMuted, fontSize = 13.sp) },
+                placeholder = {
+                    Text(
+                        "Поиск трека, артиста или альбома…",
+                        color = VibeMuted,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 singleLine = true,
+                maxLines = 1,
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Rounded.Search,
                         contentDescription = "Поиск",
-                        tint = VibeMuted,
+                        tint = if (searchQuery.isNotEmpty()) VibeGreen else VibeMuted,
                         modifier = Modifier.size(20.dp),
                     )
                 },
@@ -471,36 +396,155 @@ private fun RemotePlayerScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = VibeGreen,
-                    unfocusedBorderColor = Color(0xFF263342),
+                    unfocusedBorderColor = Color(0xFF223040),
                     focusedContainerColor = VibeSurface,
                     unfocusedContainerColor = VibeSurface,
                     focusedTextColor = VibeText,
                     unfocusedTextColor = VibeText,
+                    cursorColor = VibeGreen,
                 ),
             )
 
-            // Current Active Filter Tag
+            Spacer(Modifier.height(10.dp))
+
+            // Filter & Folder Action Bar (Balanced 50/50 Row)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 4.dp),
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "Сортировка: ${currentSort.title}",
-                    color = VibeMuted,
-                    fontSize = 11.sp,
-                )
-                if (selectedFolders.isNotEmpty()) {
-                    Text(
-                        " • Фильтр по ${selectedFolders.size} папкам",
-                        color = VibeGreen,
-                        fontSize = 11.sp,
-                    )
+                // Folder Button
+                val isFolderFiltered = selectedFolders.isNotEmpty()
+                Surface(
+                    onClick = { showFolderDialog = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .border(
+                            1.dp,
+                            if (isFolderFiltered) VibeGreen.copy(alpha = 0.5f) else Color(0xFF223040),
+                            RoundedCornerShape(12.dp),
+                        ),
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isFolderFiltered) Color(0xFF0F261B) else VibeSurface,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.FolderOpen,
+                            contentDescription = "Папки",
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isFolderFiltered) VibeGreen else VibeMuted,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (!isFolderFiltered) "Все папки" else "Папки (${selectedFolders.size})",
+                            color = if (isFolderFiltered) VibeGreen else VibeText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = VibeMuted,
+                        )
+                    }
+                }
+
+                // Sort Dropdown Button
+                Box(modifier = Modifier.weight(1f)) {
+                    Surface(
+                        onClick = { showSortMenu = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                            .border(1.dp, Color(0xFF223040), RoundedCornerShape(12.dp)),
+                        shape = RoundedCornerShape(12.dp),
+                        color = VibeSurface,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Sort,
+                                contentDescription = "Сортировка",
+                                modifier = Modifier.size(16.dp),
+                                tint = VibeGreen,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = currentSort.shortTitle,
+                                color = VibeText,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.ArrowDropDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = VibeMuted,
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                        modifier = Modifier
+                            .background(VibeSurfaceHigh)
+                            .border(1.dp, Color(0xFF2E3E50), RoundedCornerShape(12.dp)),
+                    ) {
+                        TrackSort.values().forEach { sort ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (currentSort == sort) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Check,
+                                                contentDescription = null,
+                                                tint = VibeGreen,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                        } else {
+                                            Spacer(Modifier.width(24.dp))
+                                        }
+                                        Text(
+                                            sort.title,
+                                            color = if (currentSort == sort) VibeGreen else VibeText,
+                                            fontSize = 13.sp,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    currentSort = sort
+                                    showSortMenu = false
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
         }
 
         if (tracks.isEmpty()) {
@@ -510,12 +554,13 @@ private fun RemotePlayerScreen(
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 16.dp),
+                        .padding(vertical = 16.dp)
+                        .border(1.dp, Color(0xFF223040), RoundedCornerShape(16.dp)),
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
+                            .padding(28.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Icon(
@@ -564,20 +609,21 @@ private fun NowPlayingCard(
 
     Card(
         colors = CardDefaults.cardColors(containerColor = VibeSurface),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(22.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFF223040), RoundedCornerShape(24.dp)),
+            .border(1.dp, Color(0xFF223040), RoundedCornerShape(22.dp)),
     ) {
-        Column(Modifier.padding(20.dp)) {
+        Column(Modifier.padding(18.dp)) {
             if (player?.currentTrackId != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Cover Art
                     Box(
                         modifier = Modifier
-                            .size(76.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(VibeSurfaceHigh),
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(VibeSurfaceHigh)
+                            .border(1.dp, Color(0xFF223040), RoundedCornerShape(14.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (coverBitmap != null) {
@@ -591,25 +637,33 @@ private fun NowPlayingCard(
                                 imageVector = Icons.Rounded.MusicNote,
                                 contentDescription = "Музыка",
                                 tint = VibeMuted,
-                                modifier = Modifier.size(36.dp),
+                                modifier = Modifier.size(34.dp),
                             )
                         }
                     }
 
-                    Spacer(Modifier.width(16.dp))
+                    Spacer(Modifier.width(14.dp))
 
                     Column(Modifier.weight(1f)) {
                         Text(
-                            player.title ?: "Без названия",
+                            player.title?.takeIf { it.isNotBlank() } ?: "Без названия",
                             color = VibeText,
-                            fontSize = 17.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(3.dp))
+                        val cleanArtist = remember(player.artist) {
+                            val a = player.artist?.trim().orEmpty()
+                            if (a.isBlank() || a.equals("<unknown>", ignoreCase = true) || a.equals("unknown", ignoreCase = true)) {
+                                "Неизвестный исполнитель"
+                            } else {
+                                a
+                            }
+                        }
                         Text(
-                            player.artist ?: "Неизвестный исполнитель",
+                            cleanArtist,
                             color = VibeMuted,
                             fontSize = 13.sp,
                             maxLines = 1,
@@ -620,7 +674,7 @@ private fun NowPlayingCard(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(if (!player.paused) VibeGreen.copy(alpha = 0.2f) else VibeAmber.copy(alpha = 0.2f))
+                                    .background(if (!player.paused) VibeGreen.copy(alpha = 0.16f) else VibeAmber.copy(alpha = 0.16f))
                                     .padding(horizontal = 8.dp, vertical = 2.dp),
                             ) {
                                 Text(
@@ -635,7 +689,7 @@ private fun NowPlayingCard(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF38BDF8).copy(alpha = 0.2f))
+                                        .background(Color(0xFF38BDF8).copy(alpha = 0.16f))
                                         .padding(horizontal = 8.dp, vertical = 2.dp),
                                 ) {
                                     Text("Кэш", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
@@ -645,7 +699,7 @@ private fun NowPlayingCard(
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
 
                 // Progress Bar
                 var isDragging by remember { mutableStateOf(false) }
@@ -668,11 +722,11 @@ private fun NowPlayingCard(
                         colors = SliderDefaults.colors(
                             thumbColor = VibeGreen,
                             activeTrackColor = VibeGreen,
-                            inactiveTrackColor = VibeSurfaceHigh,
+                            inactiveTrackColor = Color(0xFF223040),
                         ),
                     )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(formatTime(currentPos.toDouble()), color = VibeMuted, fontSize = 11.sp)
@@ -680,7 +734,7 @@ private fun NowPlayingCard(
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
 
                 // Playback Controls Row (Pure Vector Icons, NO EMOJIS)
                 Row(
@@ -691,7 +745,7 @@ private fun NowPlayingCard(
                     IconButton(
                         onClick = { ServerRuntime.sendCommand(RemoteCommandDto(action = "prev")) },
                         modifier = Modifier
-                            .size(50.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
                             .background(VibeSurfaceHigh),
                     ) {
@@ -699,13 +753,13 @@ private fun NowPlayingCard(
                             imageVector = Icons.Rounded.SkipPrevious,
                             contentDescription = "Предыдущий",
                             tint = VibeText,
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.size(24.dp),
                         )
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(64.dp)
+                            .size(62.dp)
                             .clip(CircleShape)
                             .background(VibeGreen)
                             .clickable {
@@ -717,14 +771,14 @@ private fun NowPlayingCard(
                             imageVector = if (player.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
                             contentDescription = if (player.paused) "Воспроизведение" else "Пауза",
                             tint = Color(0xFF06210F),
-                            modifier = Modifier.size(34.dp),
+                            modifier = Modifier.size(32.dp),
                         )
                     }
 
                     IconButton(
                         onClick = { ServerRuntime.sendCommand(RemoteCommandDto(action = "next")) },
                         modifier = Modifier
-                            .size(50.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
                             .background(VibeSurfaceHigh),
                     ) {
@@ -732,14 +786,14 @@ private fun NowPlayingCard(
                             imageVector = Icons.Rounded.SkipNext,
                             contentDescription = "Следующий",
                             tint = VibeText,
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.size(24.dp),
                         )
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
-                HorizontalDivider(color = Color(0xFF223040))
                 Spacer(Modifier.height(14.dp))
+                HorizontalDivider(color = Color(0xFF223040))
+                Spacer(Modifier.height(12.dp))
 
                 // Volume Slider (Vector Icons, NO EMOJIS)
                 var volumeValue by remember(player.volume) { mutableFloatStateOf(player.volume.toFloat()) }
@@ -762,7 +816,7 @@ private fun NowPlayingCard(
                         colors = SliderDefaults.colors(
                             thumbColor = VibeGreen,
                             activeTrackColor = VibeGreen,
-                            inactiveTrackColor = VibeSurfaceHigh,
+                            inactiveTrackColor = Color(0xFF223040),
                         ),
                     )
                     Spacer(Modifier.width(10.dp))
@@ -770,7 +824,7 @@ private fun NowPlayingCard(
                         "${volumeValue.toInt()}%",
                         color = VibeMuted,
                         fontSize = 12.sp,
-                        modifier = Modifier.width(38.dp),
+                        modifier = Modifier.width(36.dp),
                     )
                 }
             } else {
@@ -778,12 +832,12 @@ private fun NowPlayingCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(60.dp)
+                            .size(56.dp)
                             .clip(CircleShape)
                             .background(VibeSurfaceHigh),
                         contentAlignment = Alignment.Center,
@@ -795,7 +849,7 @@ private fun NowPlayingCard(
                             modifier = Modifier.size(28.dp),
                         )
                     }
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(12.dp))
                     Text(
                         "Компьютер в режиме ожидания",
                         color = VibeText,
@@ -810,7 +864,7 @@ private fun NowPlayingCard(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(14.dp))
                     OutlinedButton(
                         onClick = onNavigateToServer,
                         shape = RoundedCornerShape(12.dp),
@@ -836,14 +890,28 @@ private fun TrackItem(
     isPlaying: Boolean,
     onClick: () -> Unit,
 ) {
+    val cleanArtist = remember(track.artist) {
+        val a = track.artist.trim()
+        if (a.isBlank() || a.equals("<unknown>", ignoreCase = true) || a.equals("unknown", ignoreCase = true)) {
+            "Неизвестный исполнитель"
+        } else {
+            a
+        }
+    }
+
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (isPlaying) VibeSurfaceHigh else VibeSurface,
+            containerColor = if (isPlaying) Color(0xFF14291F) else VibeSurface,
         ),
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 3.dp)
+            .border(
+                1.dp,
+                if (isPlaying) VibeGreen.copy(alpha = 0.6f) else Color(0xFF1E2A38),
+                RoundedCornerShape(14.dp),
+            )
             .clickable(onClick = onClick),
     ) {
         Row(
@@ -854,7 +922,7 @@ private fun TrackItem(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (isPlaying) VibeGreen.copy(alpha = 0.2f) else Color(0xFF1E2836)),
+                    .background(if (isPlaying) VibeGreen.copy(alpha = 0.2f) else Color(0xFF1C2634)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -867,7 +935,7 @@ private fun TrackItem(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    track.title,
+                    track.title.ifBlank { "Без названия" },
                     color = if (isPlaying) VibeGreen else VibeText,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -876,7 +944,7 @@ private fun TrackItem(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    track.artist,
+                    cleanArtist,
                     color = VibeMuted,
                     fontSize = 12.sp,
                     maxLines = 1,
@@ -955,7 +1023,7 @@ private fun FolderSelectionDialog(
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFF263342), modifier = Modifier.padding(vertical = 6.dp))
+                HorizontalDivider(color = Color(0xFF223040), modifier = Modifier.padding(vertical = 6.dp))
 
                 if (loading) {
                     Box(modifier = Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
@@ -1098,10 +1166,10 @@ private fun ShareAndUpdatesScreen() {
         // QR Code Card
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(22.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color(0xFF223040), RoundedCornerShape(24.dp)),
+                .border(1.dp, Color(0xFF223040), RoundedCornerShape(22.dp)),
         ) {
             Column(
                 modifier = Modifier.padding(22.dp),
@@ -1629,10 +1697,10 @@ private fun StatusCard(state: ServerRuntime.State) {
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = VibeSurface),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(22.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFF223040), RoundedCornerShape(24.dp)),
+            .border(1.dp, Color(0xFF223040), RoundedCornerShape(22.dp)),
     ) {
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
