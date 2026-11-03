@@ -283,7 +283,7 @@ export function SettingsModal() {
           <section className="settings-section">
             <div className="section-title">
               <span>Обновления</span>
-              <span className="muted">v{settings.theme ? "0.1.0" : "0.1.0"}</span>
+              <span className="muted">v0.2.4</span>
             </div>
             <div className="update-box">
               <div className="update-status-row">
@@ -366,3 +366,5 @@ export function SettingsModal() {
     </div>
   );
 }
+
+

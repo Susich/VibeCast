@@ -12,7 +12,7 @@ android {
         applicationId = "com.vibecast.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
+        versionCode = 5
         versionName = "0.2.4"
     }
 
