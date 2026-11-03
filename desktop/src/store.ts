@@ -77,7 +77,7 @@ interface Store {
   clearFilters: () => void;
   setSearch: (value: string) => void;
   setSort: (value: SortKey) => void;
-  playTrack: (track: TrackRow) => void;
+  playTrack: (track: TrackRow, customQueue?: TrackRow[]) => void;
   playQueueItem: (index: number) => void;
   next: () => Promise<void>;
   prev: () => Promise<void>;
@@ -336,10 +336,10 @@ export const useStore = create<Store>()((set, get) => ({
     void get().refreshLibrary();
   },
 
-  playTrack(track) {
-    const { tracks } = get();
+  playTrack(track, customQueue) {
+    const queueToUse = customQueue && customQueue.length > 0 ? customQueue : get().tracks;
     // When clicking a track in the list, queue is formed from current view's tracks in their exact sort order
-    const nextQueue = tracks.some((row) => row.id === track.id) ? [...tracks] : [track];
+    const nextQueue = queueToUse.some((row) => row.id === track.id) ? [...queueToUse] : [track];
     const nextIndex = Math.max(0, nextQueue.findIndex((row) => row.id === track.id));
 
     set({

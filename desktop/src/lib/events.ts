@@ -8,6 +8,7 @@ import type {
   RemoteCommand,
   ServerView,
   ToastMessage,
+  TrackRow,
 } from "./types";
 import { useStore } from "../store";
 
@@ -52,11 +53,22 @@ export function bindEvents(): void {
         break;
       case "play_track":
         if (cmd.trackId) {
+          let customQueue: TrackRow[] | undefined;
+          if (cmd.queueIds && cmd.queueIds.length > 0) {
+            const trackMap = new Map(store.tracks.map((t) => [t.id, t]));
+            const resolved = cmd.queueIds
+              .map((id) => trackMap.get(id))
+              .filter((t): t is TrackRow => Boolean(t));
+            if (resolved.length > 0) {
+              customQueue = resolved;
+            }
+          }
           const found =
+            customQueue?.find((t) => t.id === cmd.trackId) ||
             store.tracks.find((t) => t.id === cmd.trackId) ||
             store.queue.find((t) => t.id === cmd.trackId);
           if (found) {
-            store.playTrack(found);
+            store.playTrack(found, customQueue);
           } else {
             void call<PlayerState>("play_track", { trackId: cmd.trackId })
               .then((player) => store.onPlayerState(player))

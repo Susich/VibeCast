@@ -72,6 +72,7 @@ data class RemoteCommandDto(
     val position: Double? = null,
     val volume: Double? = null,
     val trackId: String? = null,
+    val queueIds: List<String>? = null,
 )
 
 /** Внутренний результат страницы каталога (не сериализуется). */

@@ -150,6 +150,7 @@ export interface RemoteCommand {
   position?: number | null;
   volume?: number | null;
   trackId?: string | null;
+  queueIds?: string[] | null;
 }
 
 export interface UpdateInfo {

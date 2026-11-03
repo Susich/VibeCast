@@ -266,6 +266,7 @@ pub struct RemoteCommand {
     pub position: Option<f64>,
     pub volume: Option<f64>,
     pub track_id: Option<String>,
+    pub queue_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

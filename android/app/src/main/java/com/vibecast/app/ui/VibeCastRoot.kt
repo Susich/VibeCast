@@ -321,7 +321,60 @@ private fun RemotePlayerScreen(
 
         // Now Playing Card
         item {
-            NowPlayingCard(player = playerState, onNavigateToServer = onNavigateToServer)
+            val currentId = playerState?.currentTrackId
+            val currentIndex = remember(currentId, tracks) {
+                if (currentId != null) tracks.indexOfFirst { it.id == currentId } else -1
+            }
+
+            NowPlayingCard(
+                player = playerState,
+                onNavigateToServer = onNavigateToServer,
+                onNext = {
+                    if (tracks.isNotEmpty()) {
+                        val nextIndex = if (currentIndex in 0 until tracks.lastIndex) {
+                            currentIndex + 1
+                        } else if (currentIndex == tracks.lastIndex) {
+                            0
+                        } else {
+                            0
+                        }
+                        val nextTrack = tracks[nextIndex]
+                        ServerRuntime.sendCommand(
+                            RemoteCommandDto(
+                                action = "play_track",
+                                trackId = nextTrack.id,
+                                queueIds = tracks.take(150).map { it.id },
+                            ),
+                        )
+                    } else {
+                        ServerRuntime.sendCommand(RemoteCommandDto(action = "next"))
+                    }
+                },
+                onPrev = {
+                    val pos = playerState?.position ?: 0.0
+                    if (pos > 3.0) {
+                        ServerRuntime.sendCommand(RemoteCommandDto(action = "seek", position = 0.0))
+                    } else if (tracks.isNotEmpty()) {
+                        val prevIndex = if (currentIndex > 0) {
+                            currentIndex - 1
+                        } else if (currentIndex == 0) {
+                            tracks.lastIndex
+                        } else {
+                            0
+                        }
+                        val prevTrack = tracks[prevIndex]
+                        ServerRuntime.sendCommand(
+                            RemoteCommandDto(
+                                action = "play_track",
+                                trackId = prevTrack.id,
+                                queueIds = tracks.take(150).map { it.id },
+                            ),
+                        )
+                    } else {
+                        ServerRuntime.sendCommand(RemoteCommandDto(action = "prev"))
+                    }
+                },
+            )
             Spacer(Modifier.height(20.dp))
         }
 
@@ -585,7 +638,13 @@ private fun RemotePlayerScreen(
                     track = track,
                     isPlaying = playerState?.currentTrackId == track.id,
                     onClick = {
-                        ServerRuntime.sendCommand(RemoteCommandDto(action = "play_track", trackId = track.id))
+                        ServerRuntime.sendCommand(
+                            RemoteCommandDto(
+                                action = "play_track",
+                                trackId = track.id,
+                                queueIds = tracks.take(150).map { it.id },
+                            ),
+                        )
                     },
                 )
             }
@@ -601,6 +660,8 @@ private fun RemotePlayerScreen(
 private fun NowPlayingCard(
     player: PlayerStateDto?,
     onNavigateToServer: () -> Unit,
+    onNext: () -> Unit,
+    onPrev: () -> Unit,
 ) {
     val coverStore = ServerRuntime.coverStore
     val coverBitmap = remember(player?.currentTrackId, coverStore) {
@@ -743,7 +804,7 @@ private fun NowPlayingCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(
-                        onClick = { ServerRuntime.sendCommand(RemoteCommandDto(action = "prev")) },
+                        onClick = onPrev,
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
@@ -776,7 +837,7 @@ private fun NowPlayingCard(
                     }
 
                     IconButton(
-                        onClick = { ServerRuntime.sendCommand(RemoteCommandDto(action = "next")) },
+                        onClick = onNext,
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)

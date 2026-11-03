@@ -117,7 +117,7 @@ export function Sidebar() {
       <div className="sidebar-foot">
         <span>VibeCast</span>
         <span className="foot-dot" />
-        <span>v0.2.1</span>
+        <span>v0.2.2</span>
       </div>
     </aside>
   );
