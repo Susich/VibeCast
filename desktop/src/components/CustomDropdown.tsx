@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { ArrowUpDownIcon, CheckIcon, ChevronDownIcon } from "./Icons";
 
@@ -36,30 +36,58 @@ export function CustomDropdown<T extends string = string>({
 
   const selectedOption = options.find((opt) => opt.value === value) ?? options[0];
 
-  const close = () => {
-    if (!isOpen || isClosing) return;
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const close = useCallback((immediate = false) => {
+    clearCloseTimer();
+    if (immediate) {
+      setIsClosing(false);
+      setIsOpen(false);
+      return;
+    }
     setIsClosing(true);
     closeTimerRef.current = window.setTimeout(() => {
       setIsOpen(false);
       setIsClosing(false);
-    }, 160);
-  };
-
-  const open = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
       closeTimerRef.current = null;
-    }
+    }, 160);
+  }, [clearCloseTimer]);
+
+  const open = useCallback(() => {
+    clearCloseTimer();
     setIsClosing(false);
     setIsOpen(true);
     const idx = options.findIndex((opt) => opt.value === value);
     setHighlightIndex(idx >= 0 ? idx : 0);
-  };
+  }, [clearCloseTimer, options, value]);
 
-  const toggle = () => {
-    if (isOpen) close();
-    else open();
-  };
+  const toggle = useCallback(() => {
+    if (isOpen && !isClosing) {
+      close();
+    } else {
+      open();
+    }
+  }, [isOpen, isClosing, close, open]);
+
+  const handleSelect = useCallback(
+    (optValue: T) => {
+      onChange(optValue);
+      close();
+    },
+    [onChange, close],
+  );
+
+  // Clear timer on unmount only
+  useEffect(() => {
+    return () => {
+      clearCloseTimer();
+    };
+  }, [clearCloseTimer]);
 
   // Close on click outside or escape key
   useEffect(() => {
@@ -84,11 +112,8 @@ export function CustomDropdown<T extends string = string>({
     return () => {
       document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("keydown", onKeyDown);
-      if (closeTimerRef.current) {
-        clearTimeout(closeTimerRef.current);
-      }
     };
-  }, [isOpen, isClosing]);
+  }, [isOpen, close]);
 
   // Keyboard navigation within the dropdown
   const onTriggerKeyDown = (event: React.KeyboardEvent) => {
@@ -108,17 +133,18 @@ export function CustomDropdown<T extends string = string>({
       }
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      if (isOpen) {
+      if (isOpen && !isClosing) {
         const target = options[highlightIndex];
         if (target) {
-          onChange(target.value);
+          handleSelect(target.value);
+        } else {
+          close();
         }
-        close();
       } else {
         open();
       }
     } else if (event.key === "Tab" && isOpen) {
-      close();
+      close(true);
     }
   };
 
@@ -160,10 +186,7 @@ export function CustomDropdown<T extends string = string>({
                 aria-selected={isSelected}
                 className={`custom-dropdown-item ${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""}`}
                 style={{ "--item-idx": idx } as CSSProperties}
-                onClick={() => {
-                  onChange(option.value);
-                  close();
-                }}
+                onClick={() => handleSelect(option.value)}
                 onMouseEnter={() => setHighlightIndex(idx)}
               >
                 <div className="item-content">

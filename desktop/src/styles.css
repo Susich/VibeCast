@@ -936,6 +936,7 @@ input::placeholder {
 
 .custom-dropdown-menu.menu-exit {
   animation: dropdown-pop-out 0.16s cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
 }
 
 @keyframes dropdown-pop-in {
