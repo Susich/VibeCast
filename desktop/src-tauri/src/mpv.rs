@@ -37,6 +37,11 @@ pub struct PlayerHandle {
 
 impl PlayerHandle {
     pub fn new(app: AppHandle, volume: f64, mpv_path: Option<String>) -> Self {
+        #[cfg(windows)]
+        {
+            tauri::async_runtime::spawn_blocking(cleanup_orphaned_mpv);
+        }
+
         let volume = volume.clamp(0.0, 100.0);
         let mut state = PlayerState::default();
         state.volume = volume;
@@ -354,6 +359,9 @@ impl PlayerHandle {
         let mut child = command
             .spawn()
             .map_err(|err| format!("Не удалось запустить mpv ({mpv}): {err}"))?;
+
+        #[cfg(windows)]
+        job_object::assign_child(&child);
 
         let mut connected = None;
         let mut last_error = None;
@@ -740,6 +748,118 @@ async fn connect_ipc(path: &str) -> std::io::Result<Box<dyn IpcStream>> {
 async fn connect_ipc(path: &str) -> std::io::Result<Box<dyn IpcStream>> {
     let stream = tokio::net::UnixStream::connect(path).await?;
     Ok(Box::new(stream))
+}
+
+#[cfg(windows)]
+fn cleanup_orphaned_mpv() {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-CimInstance Win32_Process -Filter \"name = 'mpv.exe'\" | Where-Object { $_.CommandLine -like '*vibecast-mpv*' } | Stop-Process -Force -ErrorAction SilentlyContinue",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+}
+
+#[cfg(windows)]
+mod job_object {
+    use std::os::windows::io::AsRawHandle;
+    use std::sync::OnceLock;
+
+    type HANDLE = *mut std::ffi::c_void;
+    type BOOL = i32;
+
+    #[repr(C)]
+    struct IO_COUNTERS {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+        basic_limit_information: JOBOBJECT_BASIC_LIMIT_INFORMATION,
+        io_info: IO_COUNTERS,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateJobObjectW(lpJobAttributes: *mut std::ffi::c_void, lpName: *const u16) -> HANDLE;
+        fn SetInformationJobObject(
+            hJob: HANDLE,
+            JobObjectInformationClass: i32,
+            lpJobObjectInformation: *const std::ffi::c_void,
+            cbJobObjectInformationLength: u32,
+        ) -> BOOL;
+        fn AssignProcessToJobObject(hJob: HANDLE, hProcess: HANDLE) -> BOOL;
+        fn CloseHandle(hObject: HANDLE) -> BOOL;
+    }
+
+    struct JobHandle(HANDLE);
+    unsafe impl Send for JobHandle {}
+    unsafe impl Sync for JobHandle {}
+
+    impl Drop for JobHandle {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe { CloseHandle(self.0) };
+            }
+        }
+    }
+
+    static GLOBAL_JOB: OnceLock<JobHandle> = OnceLock::new();
+
+    pub fn assign_child(child: &std::process::Child) {
+        let job = GLOBAL_JOB.get_or_init(|| {
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+                if !job.is_null() {
+                    let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                    info.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                    SetInformationJobObject(
+                        job,
+                        JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                        &info as *const _ as *const std::ffi::c_void,
+                        std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                    );
+                }
+                JobHandle(job)
+            }
+        });
+
+        if !job.0.is_null() {
+            unsafe {
+                AssignProcessToJobObject(job.0, child.as_raw_handle() as HANDLE);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

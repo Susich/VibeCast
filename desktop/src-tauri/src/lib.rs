@@ -49,6 +49,17 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Moved(pos) = event {
+                // In Windows, minimized windows have negative off-screen positions (e.g. -32000, -32000).
+                // Never clamp, reposition, or save position while minimized or hidden, otherwise it causes
+                // recursive message loop deadlock (AppHang) and destroys the restore coordinates.
+                if window.is_minimized().unwrap_or(false)
+                    || pos.x <= -10000
+                    || pos.y <= -10000
+                    || !window.is_visible().unwrap_or(true)
+                {
+                    return;
+                }
+
                 let state = window.state::<AppState>();
                 let is_overlay = state
                     .db
@@ -58,21 +69,24 @@ pub fn run() {
 
                 if is_overlay {
                     if let (Ok(size), Ok(Some(monitor))) = (window.outer_size(), window.current_monitor()) {
-                        let scale = monitor.scale_factor();
-                        let screen_w = monitor.size().width as i32;
-                        let screen_h = monitor.size().height as i32;
                         let win_w = size.width as i32;
                         let win_h = size.height as i32;
-                        let margin = (4.0 * scale) as i32;
 
-                        let clamped_x = pos.x.clamp(margin, (screen_w - win_w - margin).max(margin));
-                        let clamped_y = pos.y.clamp(margin, (screen_h - win_h - margin - (35.0 * scale) as i32).max(margin));
+                        if win_w > 50 && win_h > 50 {
+                            let scale = monitor.scale_factor();
+                            let screen_w = monitor.size().width as i32;
+                            let screen_h = monitor.size().height as i32;
+                            let margin = (4.0 * scale) as i32;
 
-                        if clamped_x != pos.x || clamped_y != pos.y {
-                            let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
+                            let clamped_x = pos.x.clamp(margin, (screen_w - win_w - margin).max(margin));
+                            let clamped_y = pos.y.clamp(margin, (screen_h - win_h - margin - (35.0 * scale) as i32).max(margin));
+
+                            if clamped_x != pos.x || clamped_y != pos.y {
+                                let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
+                            }
+                            let _ = state.db.set_setting("overlay_pos_x", &clamped_x.to_string());
+                            let _ = state.db.set_setting("overlay_pos_y", &clamped_y.to_string());
                         }
-                        let _ = state.db.set_setting("overlay_pos_x", &clamped_x.to_string());
-                        let _ = state.db.set_setting("overlay_pos_y", &clamped_y.to_string());
                     }
                 }
             }

@@ -100,6 +100,19 @@ export function MiniOverlay() {
     };
   }, [clearTimer, collapse, updateWindowSize]);
 
+  // When app is minimized (hidden), pause/clear collapse timer so we never resize while minimized
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearTimer();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [clearTimer]);
+
   const handleStartDrag = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (

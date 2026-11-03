@@ -581,12 +581,16 @@ pub async fn set_overlay_mode(
 ) -> Result<OverlayState, String> {
     if enabled {
         if let Ok(pos) = window.outer_position() {
-            let _ = state.db.set_setting("full_pos_x", &pos.x.to_string());
-            let _ = state.db.set_setting("full_pos_y", &pos.y.to_string());
+            if pos.x > -10000 && pos.y > -10000 {
+                let _ = state.db.set_setting("full_pos_x", &pos.x.to_string());
+                let _ = state.db.set_setting("full_pos_y", &pos.y.to_string());
+            }
         }
         if let Ok(size) = window.outer_size() {
-            let _ = state.db.set_setting("full_size_w", &size.width.to_string());
-            let _ = state.db.set_setting("full_size_h", &size.height.to_string());
+            if size.width > 50 && size.height > 50 {
+                let _ = state.db.set_setting("full_size_w", &size.width.to_string());
+                let _ = state.db.set_setting("full_size_h", &size.height.to_string());
+            }
         }
 
         let _ = window.set_decorations(false);
@@ -604,7 +608,9 @@ pub async fn set_overlay_mode(
             .get_setting("overlay_pos_y")
             .and_then(|v| v.parse::<i32>().ok());
         if let (Some(x), Some(y)) = (saved_x, saved_y) {
-            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+            if x > -10000 && y > -10000 {
+                let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+            }
         }
 
         let _ = state.db.set_setting("is_overlay", "true");
@@ -617,8 +623,10 @@ pub async fn set_overlay_mode(
         })
     } else {
         if let Ok(pos) = window.outer_position() {
-            let _ = state.db.set_setting("overlay_pos_x", &pos.x.to_string());
-            let _ = state.db.set_setting("overlay_pos_y", &pos.y.to_string());
+            if pos.x > -10000 && pos.y > -10000 {
+                let _ = state.db.set_setting("overlay_pos_x", &pos.x.to_string());
+                let _ = state.db.set_setting("overlay_pos_y", &pos.y.to_string());
+            }
         }
 
         let _ = window.set_always_on_top(false);
@@ -642,6 +650,9 @@ pub async fn set_overlay_mode(
 
 #[tauri::command]
 pub fn save_overlay_position(state: State<'_, AppState>, x: i32, y: i32) -> Result<(), String> {
+    if x <= -10000 || y <= -10000 {
+        return Ok(());
+    }
     state.db.set_setting("overlay_pos_x", &x.to_string())?;
     state.db.set_setting("overlay_pos_y", &y.to_string())?;
     sync_to_config_json(state.inner());
@@ -653,38 +664,45 @@ pub async fn set_overlay_compact(
     window: tauri::WebviewWindow,
     compact: bool,
 ) -> Result<(), String> {
+    if window.is_minimized().unwrap_or(false) {
+        return Ok(());
+    }
     let _ = window.set_shadow(false);
     if compact {
         if let (Ok(pos), Ok(Some(monitor))) = (window.outer_position(), window.current_monitor()) {
-            let scale = monitor.scale_factor();
-            let screen_w = monitor.size().width as i32;
-            let screen_h = monitor.size().height as i32;
-            let target_w = (120.0 * scale) as i32;
-            let target_h = (120.0 * scale) as i32;
-            let margin = (4.0 * scale) as i32;
+            if pos.x > -10000 && pos.y > -10000 {
+                let scale = monitor.scale_factor();
+                let screen_w = monitor.size().width as i32;
+                let screen_h = monitor.size().height as i32;
+                let target_w = (120.0 * scale) as i32;
+                let target_h = (120.0 * scale) as i32;
+                let margin = (4.0 * scale) as i32;
 
-            let clamped_x = pos.x.clamp(margin, (screen_w - target_w - margin).max(margin));
-            let clamped_y = pos.y.clamp(margin, (screen_h - target_h - margin - (35.0 * scale) as i32).max(margin));
+                let clamped_x = pos.x.clamp(margin, (screen_w - target_w - margin).max(margin));
+                let clamped_y = pos.y.clamp(margin, (screen_h - target_h - margin - (35.0 * scale) as i32).max(margin));
 
-            if clamped_x != pos.x || clamped_y != pos.y {
-                let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
+                if clamped_x != pos.x || clamped_y != pos.y {
+                    let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
+                }
             }
         }
         let _ = window.set_size(tauri::LogicalSize::new(120.0, 120.0));
     } else {
         if let (Ok(pos), Ok(Some(monitor))) = (window.outer_position(), window.current_monitor()) {
-            let scale = monitor.scale_factor();
-            let screen_w = monitor.size().width as i32;
-            let screen_h = monitor.size().height as i32;
-            let target_w = (390.0 * scale) as i32;
-            let target_h = (185.0 * scale) as i32;
-            let margin = (8.0 * scale) as i32;
+            if pos.x > -10000 && pos.y > -10000 {
+                let scale = monitor.scale_factor();
+                let screen_w = monitor.size().width as i32;
+                let screen_h = monitor.size().height as i32;
+                let target_w = (390.0 * scale) as i32;
+                let target_h = (185.0 * scale) as i32;
+                let margin = (8.0 * scale) as i32;
 
-            let clamped_x = pos.x.clamp(margin, (screen_w - target_w - margin).max(margin));
-            let clamped_y = pos.y.clamp(margin, (screen_h - target_h - margin - (35.0 * scale) as i32).max(margin));
+                let clamped_x = pos.x.clamp(margin, (screen_w - target_w - margin).max(margin));
+                let clamped_y = pos.y.clamp(margin, (screen_h - target_h - margin - (35.0 * scale) as i32).max(margin));
 
-            if clamped_x != pos.x || clamped_y != pos.y {
-                let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
+                if clamped_x != pos.x || clamped_y != pos.y {
+                    let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
+                }
             }
         }
         let _ = window.set_size(tauri::LogicalSize::new(390.0, 185.0));
