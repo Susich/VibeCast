@@ -270,12 +270,15 @@ export function MiniOverlay() {
 
         {/* Circular Floating Bubble */}
         <div className={`mini-circle-bubble ${isPlaying ? "is-playing" : ""}`}>
-          <img
-            src="/logo.png"
-            alt="VibeCast"
-            className="mini-circle-logo"
-            draggable={false}
-          />
+          <div className="mini-circle-logo-wrap">
+            <img
+              src="/logo.png"
+              alt="VibeCast"
+              className="mini-circle-logo"
+              draggable={false}
+            />
+            <div className="mini-circle-logo-tint" aria-hidden="true" />
+          </div>
         </div>
       </div>
     );

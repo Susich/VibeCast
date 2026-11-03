@@ -762,6 +762,9 @@ pub async fn set_overlay_mode(
         let _ = state.db.set_setting("overlay_pos_y", &final_card_y.to_string());
         let _ = state.db.set_setting("circle_pos_x", &circle_x.to_string());
         let _ = state.db.set_setting("circle_pos_y", &circle_y.to_string());
+        let _ = state.db.set_setting("expanded_from_circle_x", &circle_x.to_string());
+        let _ = state.db.set_setting("expanded_from_circle_y", &circle_y.to_string());
+        let _ = state.db.set_setting("card_dragged_since_expanded", "false");
         let _ = state.db.set_setting("overlay_compact", "false");
         let _ = state.db.set_setting("is_overlay", "true");
         sync_to_config_json(state.inner());
@@ -876,11 +879,36 @@ pub async fn set_overlay_compact(
 
     if compact {
         // COLLAPSING TO CIRCLE:
-        // Position circle in the exact visual center of the current card!
         state.db.set_setting("overlay_compact", "true")?;
 
-        let target_x = cur_pos.x + (card_w - circle_w) / 2;
-        let target_y = cur_pos.y + (card_h - circle_h) / 2;
+        let was_dragged = state
+            .db
+            .get_setting("card_dragged_since_expanded")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+
+        let (target_x, target_y) = if !was_dragged {
+            // Restore EXACTLY to where the user expanded it from!
+            let exp_x = state.db.get_setting("expanded_from_circle_x").and_then(|s| s.parse::<i32>().ok());
+            let exp_y = state.db.get_setting("expanded_from_circle_y").and_then(|s| s.parse::<i32>().ok());
+            match (exp_x, exp_y) {
+                (Some(ex), Some(ey)) if ex > -10000 && ey > -10000 => (ex, ey),
+                _ => (
+                    cur_pos.x + (card_w - circle_w) / 2,
+                    cur_pos.y + (card_h - circle_h) / 2,
+                ),
+            }
+        } else {
+            let saved_cx = state.db.get_setting("circle_pos_x").and_then(|s| s.parse::<i32>().ok());
+            let saved_cy = state.db.get_setting("circle_pos_y").and_then(|s| s.parse::<i32>().ok());
+            match (saved_cx, saved_cy) {
+                (Some(cx), Some(cy)) if cx > -10000 && cy > -10000 => (cx, cy),
+                _ => (
+                    cur_pos.x + (card_w - circle_w) / 2,
+                    cur_pos.y + (card_h - circle_h) / 2,
+                ),
+            }
+        };
 
         let min_x = mon_pos.x + margin;
         let max_x = (mon_pos.x + mon_size.width as i32 - circle_w - margin).max(min_x);
@@ -897,16 +925,27 @@ pub async fn set_overlay_compact(
         let _ = window.set_size(tauri::LogicalSize::new(120.0, 120.0));
     } else {
         // EXPANDING TO CARD:
-        // Current position IS the circle position! Save it so we can return to it later!
-        if cur_pos.x > -10000 && cur_pos.y > -10000 {
-            let _ = state.db.set_setting("circle_pos_x", &cur_pos.x.to_string());
-            let _ = state.db.set_setting("circle_pos_y", &cur_pos.y.to_string());
-        }
+        let circle_x = if cur_pos.x > -10000 && cur_pos.y > -10000 {
+            cur_pos.x
+        } else {
+            state.db.get_setting("circle_pos_x").and_then(|s| s.parse::<i32>().ok()).unwrap_or(cur_pos.x)
+        };
+        let circle_y = if cur_pos.y > -10000 && cur_pos.y > -10000 {
+            cur_pos.y
+        } else {
+            state.db.get_setting("circle_pos_y").and_then(|s| s.parse::<i32>().ok()).unwrap_or(cur_pos.y)
+        };
+
+        let _ = state.db.set_setting("circle_pos_x", &circle_x.to_string());
+        let _ = state.db.set_setting("circle_pos_y", &circle_y.to_string());
+        let _ = state.db.set_setting("expanded_from_circle_x", &circle_x.to_string());
+        let _ = state.db.set_setting("expanded_from_circle_y", &circle_y.to_string());
+        let _ = state.db.set_setting("card_dragged_since_expanded", "false");
         state.db.set_setting("overlay_compact", "false")?;
 
         // Center expanded card on the circle
-        let center_x = cur_pos.x + circle_w / 2;
-        let center_y = cur_pos.y + circle_h / 2;
+        let center_x = circle_x + circle_w / 2;
+        let center_y = circle_y + circle_h / 2;
 
         let desired_card_x = center_x - card_w / 2;
         let desired_card_y = center_y - card_h / 2;
@@ -1089,6 +1128,9 @@ pub async fn start_clamped_drag(
         if is_compact {
             let _ = state.db.set_setting("circle_pos_x", &last_win_x.to_string());
             let _ = state.db.set_setting("circle_pos_y", &last_win_y.to_string());
+            let _ = state.db.set_setting("expanded_from_circle_x", &last_win_x.to_string());
+            let _ = state.db.set_setting("expanded_from_circle_y", &last_win_y.to_string());
+            let _ = state.db.set_setting("card_dragged_since_expanded", "false");
             // Synchronize card center to match this circle position
             let target_card_w = (390.0 * scale).round() as i32;
             let target_card_h = (185.0 * scale).round() as i32;
@@ -1097,6 +1139,7 @@ pub async fn start_clamped_drag(
             let _ = state.db.set_setting("overlay_pos_x", &cx.to_string());
             let _ = state.db.set_setting("overlay_pos_y", &cy.to_string());
         } else {
+            let _ = state.db.set_setting("card_dragged_since_expanded", "true");
             let _ = state.db.set_setting("overlay_pos_x", &last_win_x.to_string());
             let _ = state.db.set_setting("overlay_pos_y", &last_win_y.to_string());
             // Synchronize circle center to match this card position
@@ -1106,6 +1149,8 @@ pub async fn start_clamped_drag(
             let cy = last_win_y + win_h / 2 - target_circle_h / 2;
             let _ = state.db.set_setting("circle_pos_x", &cx.to_string());
             let _ = state.db.set_setting("circle_pos_y", &cy.to_string());
+            let _ = state.db.set_setting("expanded_from_circle_x", &cx.to_string());
+            let _ = state.db.set_setting("expanded_from_circle_y", &cy.to_string());
         }
         sync_to_config_json(state.inner());
 

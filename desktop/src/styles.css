@@ -3113,13 +3113,46 @@ body.is-overlay #root,
   }
 }
 
+.mini-circle-logo-wrap {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  user-select: none;
+}
+
 .mini-circle-logo {
   width: 36px;
   height: 36px;
   object-fit: contain;
   border-radius: 9px;
   pointer-events: none;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.65));
+  transition: filter 0.35s ease;
+}
+
+.mini-circle-logo-tint {
+  position: absolute;
+  inset: 0;
+  border-radius: 9px;
+  background-color: var(--accent);
+  -webkit-mask: url("/logo.png") center / contain no-repeat;
+  mask: url("/logo.png") center / contain no-repeat;
+  mix-blend-mode: color;
+  opacity: 0.72;
+  pointer-events: none;
+  transition: background-color 0.35s ease, opacity 0.35s ease;
+}
+
+.mini-circle-bubble:hover .mini-circle-logo {
+  filter: drop-shadow(0 0 12px var(--accent)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.75));
+}
+
+.mini-circle-bubble:hover .mini-circle-logo-tint {
+  opacity: 0.85;
 }
 
 /* Concentric Neon Ripple Waves when music is playing */
