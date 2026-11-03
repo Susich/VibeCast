@@ -3,7 +3,6 @@ import { useStore } from "../store";
 import {
   DiscIcon,
   DownloadIcon,
-  ListMusicIcon,
   MusicIcon,
   RadioIcon,
   ServerIcon,
@@ -20,14 +19,9 @@ export function Sidebar() {
   const stats = useStore((state) => state.stats);
   const cachedCount = useStore((state) => state.cachedCount);
   const view = useStore((state) => state.view);
-  const queue = useStore((state) => state.queue);
-  const queueIndex = useStore((state) => state.queueIndex);
   const navigate = useStore((state) => state.navigate);
   const openConnect = useStore((state) => state.openConnect);
-  const toggleQueue = useStore((state) => state.toggleQueue);
   const displayName = server?.deviceName ?? "VibeCast";
-
-  const queueRemaining = Math.max(0, queue.length - (queueIndex + 1));
 
   return (
     <aside className="sidebar">
@@ -105,19 +99,11 @@ export function Sidebar() {
       {/* Spacer to push footer to bottom */}
       <div className="sidebar-spacer" />
 
-      {/* Optional Queue indicator if tracks are queued */}
-      {queueRemaining > 0 && (
-        <button className="queue-quick-btn" onClick={toggleQueue} title="Открыть очередь воспроизведения">
-          <ListMusicIcon size={16} />
-          <span>В очереди: {queueRemaining}</span>
-        </button>
-      )}
-
       {/* Sleek Minimal Footer */}
       <div className="sidebar-foot">
         <span>VibeCast</span>
         <span className="foot-dot" />
-        <span>v0.2.5</span>
+        <span>v0.2.6</span>
       </div>
     </aside>
   );

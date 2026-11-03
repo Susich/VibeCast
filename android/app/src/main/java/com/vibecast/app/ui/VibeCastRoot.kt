@@ -124,7 +124,6 @@ import com.vibecast.app.ui.theme.VibeRed
 import com.vibecast.app.ui.theme.VibeSurface
 import com.vibecast.app.ui.theme.VibeSurfaceHigh
 import com.vibecast.app.ui.theme.VibeText
-import com.vibecast.shared.ConnectionUrl
 import com.vibecast.shared.PlayerStateDto
 import com.vibecast.shared.RemoteCommandDto
 import com.vibecast.shared.TrackDto
@@ -1683,10 +1682,6 @@ private fun StatusScreen(
             )
         }
 
-        if (state.running && state.ip != null) {
-            Spacer(Modifier.height(16.dp))
-            ConnectionCard(state)
-        }
 
         Spacer(Modifier.height(16.dp))
         Card(
@@ -1761,20 +1756,8 @@ private fun StatusScreen(
             modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF223040), RoundedCornerShape(20.dp)),
         ) {
             Column(Modifier.padding(18.dp)) {
-                Text("Подключение с ПК", color = VibeText, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "В приложении VibeCast на ПК выберите телефон из списка — он находится " +
-                        "автоматически в той же Wi-Fi сети. Для первого подключения введите токен " +
-                        "или вставьте ссылку, скопированную на телефоне.",
-                    color = VibeMuted,
-                    fontSize = 13.sp,
-                )
-                Spacer(Modifier.height(14.dp))
-                HorizontalDivider(color = Color(0xFF223040))
-                Spacer(Modifier.height(14.dp))
-                Text("Статус фоновой работы", color = VibeMuted, fontSize = 12.sp)
-                Spacer(Modifier.height(4.dp))
+                Text("Статус фоновой работы", color = VibeText, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
                 Text(
                     "Сервер работает в Foreground Service с блокировкой сна (WakeLock & WifiLock). " +
                         "Уведомление «VibeCast раздаёт библиотеку» должно оставаться в системной шторке.",
@@ -1894,103 +1877,6 @@ private fun TextButtonText(text: String, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun ConnectionCard(state: ServerRuntime.State) {
-    val ip = state.ip ?: return
-    val address = "http://$ip:${state.port}"
-    val link = remember(ip, state.port, state.token) {
-        ConnectionUrl.build(ip, state.port, state.token)
-    }
-    val clipboard = LocalClipboardManager.current
-    var copied by remember { mutableStateOf(false) }
-
-    LaunchedEffect(copied) {
-        if (copied) {
-            delay(1_500)
-            copied = false
-        }
-    }
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = VibeSurface),
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF223040), RoundedCornerShape(20.dp)),
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(VibeGreen.copy(alpha = 0.16f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Sensors,
-                        contentDescription = null,
-                        tint = VibeGreen,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text("Подключение с ПК", color = VibeText, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Компьютер найдёт телефон сам в Wi-Fi сети",
-                        color = VibeMuted,
-                        fontSize = 12.sp,
-                    )
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            Text("Адрес", color = VibeMuted, fontSize = 11.sp)
-            Spacer(Modifier.height(5.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    address,
-                    color = VibeText,
-                    fontSize = 14.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButtonText("Копировать") {
-                    clipboard.setText(AnnotatedString(address))
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = {
-                    clipboard.setText(AnnotatedString(link))
-                    copied = true
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = VibeGreen),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().height(46.dp),
-            ) {
-                Icon(
-                    imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                    contentDescription = null,
-                    tint = Color(0xFF06210F),
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (copied) "Ссылка скопирована!" else "Копировать ссылку с токеном",
-                    color = Color(0xFF06210F),
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Spacer(Modifier.height(7.dp))
-            Text(
-                "Вставьте ссылку в поле «Адрес телефона» на ПК — токен подхватится сам. " +
-                    "Это быстрее, чем вводить токен вручную.",
-                color = VibeMuted,
-                fontSize = 11.sp,
-            )
-        }
-    }
-}
 
 @Composable
 private fun Banner(text: String, color: Color, modifier: Modifier = Modifier) {

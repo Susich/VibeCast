@@ -1,6 +1,6 @@
 [package]
 name = "vibecast"
-version = "0.2.5"
+version = "0.2.6"
 description = "VibeCast desktop player"
 authors = ["VibeCast Dev"]
 edition = "2021"
