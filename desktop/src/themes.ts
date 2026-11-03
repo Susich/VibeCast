@@ -95,7 +95,7 @@ function adjustColorBrightness(hex: string, percent: number): string {
   return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 }
 
-function hexToRgba(hex: string, alpha: number): string {
+export function hexToRgba(hex: string, alpha: number): string {
   const cleanHex = hex.replace("#", "");
   if (cleanHex.length !== 6) return `rgba(0, 240, 255, ${alpha})`;
   const r = parseInt(cleanHex.slice(0, 2), 16);

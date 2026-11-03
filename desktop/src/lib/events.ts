@@ -111,8 +111,15 @@ export function bindEvents(): void {
     if (!data?.action) return;
     const store = useStore.getState();
 
-    // Signal UI to open/reveal HUD and refresh inactivity timer
-    window.dispatchEvent(new CustomEvent("vibecast-hotkey", { detail: { action: data.action } }));
+    // If global hotkeys are disabled or user is currently recording a key combination, ignore
+    if (store.settings.hotkeys?.enabled === false || store.isRecordingHotkey) {
+      return;
+    }
+
+    // Signal UI to open/reveal HUD and refresh inactivity timer (for media actions only)
+    if (data.action !== "toggle_overlay") {
+      window.dispatchEvent(new CustomEvent("vibecast-hotkey", { detail: { action: data.action } }));
+    }
 
     switch (data.action) {
       case "toggle":

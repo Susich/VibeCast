@@ -4,8 +4,62 @@ import { call } from "../lib/api";
 import { formatBytes, formatCount } from "../lib/format";
 import { useStore } from "../store";
 import { THEMES } from "../themes";
-import type { CacheStats, UpdateInfo } from "../lib/types";
+import type { CacheStats, HotkeyConfig, UpdateInfo } from "../lib/types";
 import { DownloadIcon, FolderIcon, PaletteIcon, ServerIcon, SpinnerIcon, TrashIcon, XIcon, CheckIcon, RefreshIcon } from "./Icons";
+
+const DEFAULT_HOTKEYS: HotkeyConfig = {
+  enabled: true,
+  toggle: "Ctrl+Alt+Space",
+  next: "Ctrl+Alt+Right",
+  prev: "Ctrl+Alt+Left",
+  volumeUp: "Ctrl+Alt+Up",
+  volumeDown: "Ctrl+Alt+Down",
+  toggleOverlay: "Ctrl+Alt+W",
+};
+
+type HotkeyActionKey = Exclude<keyof HotkeyConfig, "enabled">;
+
+const HOTKEY_ITEMS: { key: HotkeyActionKey; label: string; extraHint?: string }[] = [
+  { key: "toggle", label: "Воспроизведение / Пауза", extraHint: "Media Play" },
+  { key: "next", label: "Следующий трек", extraHint: "Media Next" },
+  { key: "prev", label: "Предыдущий трек", extraHint: "Media Prev" },
+  { key: "volumeUp", label: "Прибавить громкость" },
+  { key: "volumeDown", label: "Убавить громкость" },
+  { key: "toggleOverlay", label: "Виджет / Оверлей" },
+];
+
+function formatKeyPart(part: string): string {
+  switch (part.toLowerCase()) {
+    case "up":
+    case "arrowup":
+      return "↑";
+    case "down":
+    case "arrowdown":
+      return "↓";
+    case "left":
+    case "arrowleft":
+      return "←";
+    case "right":
+    case "arrowright":
+      return "→";
+    default:
+      return part;
+  }
+}
+
+function renderKbdCombo(combo: string) {
+  const parts = combo.split("+").map((p) => p.trim());
+  return (
+    <>
+      {parts.map((part, idx) => (
+        <span key={idx}>
+          <kbd>{formatKeyPart(part)}</kbd>
+          {idx < parts.length - 1 && " + "}
+        </span>
+      ))}
+    </>
+  );
+}
 
 export function SettingsModal() {
   const open = useStore((state) => state.settingsOpen);
@@ -20,12 +74,18 @@ export function SettingsModal() {
   const setCacheMode = useStore((state) => state.setCacheMode);
   const disconnect = useStore((state) => state.disconnect);
   const addToast = useStore((state) => state.addToast);
+  const setExpandOnHotkey = useStore((state) => state.setExpandOnHotkey);
+  const saveHotkeys = useStore((state) => state.saveHotkeys);
+  const setRecordingHotkey = useStore((state) => state.setRecordingHotkey);
 
   const [mpvPath, setMpvPath] = useState("");
   const [cache, setCache] = useState<CacheStats>({ count: cachedCount, bytes: 0 });
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [recordingAction, setRecordingAction] = useState<HotkeyActionKey | null>(null);
+
+  const hotkeysEnabled = settings.hotkeys?.enabled ?? true;
 
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateInfo | null>(null);
@@ -40,6 +100,67 @@ export function SettingsModal() {
       .then(setCache)
       .catch(() => undefined);
   }, [open, settings.mpvPath]);
+
+  useEffect(() => {
+    if (!recordingAction) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.key === "Escape") {
+        setRecordingAction(null);
+        return;
+      }
+
+      // If user just pressed a modifier alone, wait for the actual key
+      if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) {
+        return;
+      }
+
+      const parts: string[] = [];
+      if (e.ctrlKey) parts.push("Ctrl");
+      if (e.altKey) parts.push("Alt");
+      if (e.shiftKey) parts.push("Shift");
+      if (e.metaKey) parts.push("Win");
+
+      if (parts.length === 0) {
+        addToast("Горячая клавиша должна содержать Ctrl, Alt или Shift", "info");
+        return;
+      }
+
+      let keyName = e.code;
+      if (keyName.startsWith("Key")) {
+        keyName = keyName.slice(3);
+      } else if (keyName.startsWith("Digit")) {
+        keyName = keyName.slice(5);
+      } else if (keyName.startsWith("Arrow")) {
+        keyName = keyName.slice(5);
+      } else if (keyName === "Space") {
+        keyName = "Space";
+      }
+
+      parts.push(keyName);
+      const combo = parts.join("+");
+
+      const currentHotkeys = settings.hotkeys || DEFAULT_HOTKEYS;
+      const updated: HotkeyConfig = { ...currentHotkeys, [recordingAction]: combo };
+      void saveHotkeys(updated);
+      setRecordingAction(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [recordingAction, settings.hotkeys, saveHotkeys, addToast]);
+
+  useEffect(() => {
+    setRecordingHotkey(recordingAction !== null);
+    return () => {
+      setRecordingHotkey(false);
+    };
+  }, [recordingAction, setRecordingHotkey]);
 
   if (!open) return null;
 
@@ -201,30 +322,80 @@ export function SettingsModal() {
 
           <section className="settings-section">
             <div className="section-title">
-              <span>Горячие клавиши (в игре и в фоне)</span>
-              <span className="muted">глобальные</span>
+              <span>Плавающий виджет</span>
+              <span className="muted">HUD / Оверлей</span>
             </div>
-            <div className="hotkeys-list">
-              <div className="hotkey-item">
-                <span>Воспроизведение / Пауза</span>
-                <div className="hotkey-keys"><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Space</kbd> / <kbd>Media Play</kbd></div>
+            <label className="toggle-switch-container">
+              <div className="setting-toggle-info">
+                <b>Раскрывать виджет при нажатии горячих клавиш</b>
+                <small>Разворачивать компактный кружок в расширенную карточку плеера при управлении треками с клавиатуры</small>
               </div>
-              <div className="hotkey-item">
-                <span>Следующий трек</span>
-                <div className="hotkey-keys"><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>→</kbd> / <kbd>Media Next</kbd></div>
+              <input
+                type="checkbox"
+                checked={settings.expandOnHotkey ?? true}
+                onChange={(e) => void setExpandOnHotkey(e.target.checked)}
+              />
+            </label>
+          </section>
+
+          <section className="settings-section">
+            <div className="section-title">
+              <span>Горячие клавиши (в игре и в фоне)</span>
+              <span className="muted">{hotkeysEnabled ? "активны" : "отключены"}</span>
+            </div>
+
+            <label className="toggle-switch-container" style={{ marginBottom: 12 }}>
+              <div className="setting-toggle-info">
+                <b>Глобальные горячие клавиши для управления</b>
+                <small>Перехватывать клавиши для управления воспроизведением и громкостью в других окнах и играх</small>
               </div>
-              <div className="hotkey-item">
-                <span>Предыдущий трек</span>
-                <div className="hotkey-keys"><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>Media Prev</kbd></div>
-              </div>
-              <div className="hotkey-item">
-                <span>Громкость</span>
-                <div className="hotkey-keys"><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd></div>
-              </div>
-              <div className="hotkey-item">
-                <span>Оверлей / Виджет HUD</span>
-                <div className="hotkey-keys"><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>W</kbd></div>
-              </div>
+              <input
+                type="checkbox"
+                checked={hotkeysEnabled}
+                onChange={(e) => {
+                  const currentConfig = settings.hotkeys || DEFAULT_HOTKEYS;
+                  void saveHotkeys({ ...currentConfig, enabled: e.target.checked });
+                }}
+              />
+            </label>
+
+            <div className={`hotkeys-list ${!hotkeysEnabled ? "disabled-hotkeys" : ""}`}>
+              {HOTKEY_ITEMS.map((item) => {
+                const currentConfig = settings.hotkeys || DEFAULT_HOTKEYS;
+                const combo = String(currentConfig[item.key] || DEFAULT_HOTKEYS[item.key]);
+                const isRecording = recordingAction === item.key;
+
+                return (
+                  <div key={item.key} className="hotkey-item">
+                    <span>{item.label}</span>
+                    <button
+                      type="button"
+                      className={`hotkey-button ${isRecording ? "recording" : ""}`}
+                      onClick={() => setRecordingAction(isRecording ? null : item.key)}
+                      title={isRecording ? "Нажмите Esc для отмены" : "Нажмите, чтобы назначить свои клавиши"}
+                    >
+                      {isRecording ? (
+                        <span>Нажмите сочетание... (Esc)</span>
+                      ) : (
+                        <>
+                          {renderKbdCombo(combo)}
+                          {item.extraHint && <span className="hotkey-extra-hint"> / {item.extraHint}</span>}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="inline-actions" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="secondary-button compact"
+                onClick={() => void saveHotkeys(DEFAULT_HOTKEYS)}
+                title="Сбросить все сочетания клавиш к стандартным"
+              >
+                <RefreshIcon size={14} /> Сбросить по умолчанию
+              </button>
             </div>
           </section>
 
@@ -283,12 +454,12 @@ export function SettingsModal() {
           <section className="settings-section">
             <div className="section-title">
               <span>Обновления</span>
-              <span className="muted">v0.2.6</span>
+              <span className="muted">v0.2.7</span>
             </div>
             <div className="update-box">
               <div className="update-status-row">
                 <div>
-                  <b>Версия приложения: v0.2.6</b>
+                  <b>Версия приложения: v0.2.7</b>
                   <p className="muted" style={{ margin: "4px 0 0 0", fontSize: 13 }}>
                     Автоматическая проверка свежих релизов с GitHub
                   </p>
@@ -356,7 +527,7 @@ export function SettingsModal() {
 
           <section className="settings-section about-section">
             <div>
-              <b>VibeCast 0.2.6</b>
+              <b>VibeCast 0.2.7</b>
               <small>Android → Windows / Linux / macOS · HTTP в локальной сети</small>
             </div>
             <span className="about-badge">MVP</span>

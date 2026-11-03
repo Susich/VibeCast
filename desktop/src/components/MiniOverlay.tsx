@@ -27,6 +27,7 @@ export function MiniOverlay() {
   const seek = useStore((state) => state.seek);
   const setVolume = useStore((state) => state.setVolume);
   const toggleOverlay = useStore((state) => state.toggleOverlay);
+  const expandOnHotkey = useStore((state) => state.settings.expandOnHotkey ?? true);
 
   // Expanded = full player controls (390x185); Collapsed = compact circular bubble (88x88)
   const [expanded, setExpanded] = useState(true);
@@ -73,12 +74,14 @@ export function MiniOverlay() {
     [clearTimer, collapse, pinned, updateWindowSize],
   );
 
-  // Listen to global hotkey triggers to reveal full player
+  // Listen to global hotkey triggers to reveal full player (if enabled in settings)
   useEffect(() => {
     const onHotkey = (e: Event) => {
       const customEvent = e as CustomEvent<{ action: string }>;
-      if (customEvent.detail?.action) {
-        expandWithTimer(4500);
+      if (customEvent.detail?.action && customEvent.detail.action !== "toggle_overlay") {
+        if (expandOnHotkey) {
+          expandWithTimer(4500);
+        }
       }
     };
 
@@ -86,7 +89,14 @@ export function MiniOverlay() {
     return () => {
       window.removeEventListener("vibecast-hotkey", onHotkey);
     };
-  }, [expandWithTimer]);
+  }, [expandOnHotkey, expandWithTimer]);
+
+  // Clean up any pending collapse timer on unmount
+  useEffect(() => {
+    return () => {
+      clearTimer();
+    };
+  }, [clearTimer]);
 
   // Initial mount: show full player for 4.5s then gently collapse to circle
   useEffect(() => {
@@ -163,40 +173,27 @@ export function MiniOverlay() {
 
   const volumeScale = isPlaying ? Math.max(0.3, player.volume / 100) : 0;
 
-  // Dedicated pointer tracking for collapsed circle to guarantee click works!
-  const circlePointerRef = useRef<{ x: number; y: number; time: number; moved: boolean } | null>(null);
+  // Immediate drag handling: grabs instantly on mousedown, locks cursor to circle,
+  // and expands widget if mouse was clicked without dragging.
+  const isDraggingCircleRef = useRef(false);
 
-  const handleCircleMouseDown = (e: MouseEvent) => {
+  const handleCircleMouseDown = async (e: MouseEvent) => {
     if (e.button !== 0) return;
-    circlePointerRef.current = {
-      x: e.screenX,
-      y: e.screenY,
-      time: Date.now(),
-      moved: false,
-    };
-  };
+    e.preventDefault();
+    e.stopPropagation();
 
-  const handleCircleMouseMove = (e: MouseEvent) => {
-    if (!circlePointerRef.current) return;
-    const dx = e.screenX - circlePointerRef.current.x;
-    const dy = e.screenY - circlePointerRef.current.y;
-    if (Math.hypot(dx, dy) >= 6) {
-      circlePointerRef.current.moved = true;
-      void call("start_window_drag").catch(() => undefined);
-    }
-  };
+    if (isDraggingCircleRef.current) return;
+    isDraggingCircleRef.current = true;
 
-  const handleCircleMouseUp = (e: MouseEvent) => {
-    if (!circlePointerRef.current) return;
-    const { x, y, time, moved } = circlePointerRef.current;
-    circlePointerRef.current = null;
-    const dx = Math.abs(e.screenX - x);
-    const dy = Math.abs(e.screenY - y);
-    const dt = Date.now() - time;
-
-    // If mouse didn't drag far and was released within 600ms -> user clicked it!
-    if (!moved && dx < 6 && dy < 6 && dt < 600) {
+    try {
+      const moved = await call<boolean>("start_window_drag");
+      if (!moved) {
+        expandWithTimer(5000);
+      }
+    } catch {
       expandWithTimer(5000);
+    } finally {
+      isDraggingCircleRef.current = false;
     }
   };
 
@@ -206,9 +203,6 @@ export function MiniOverlay() {
       <div
         className="mini-circle-root"
         onMouseDown={handleCircleMouseDown}
-        onMouseMove={handleCircleMouseMove}
-        onMouseUp={handleCircleMouseUp}
-        onClick={() => expandWithTimer(5000)}
         title={
           isPlaying
             ? `${player.title ?? "VibeCast"} · Нажмите для управления`
@@ -216,7 +210,12 @@ export function MiniOverlay() {
         }
       >
         {/* Radial Circular Equalizer Spectrum Visualizer */}
-        <CircularVisualizer isPlaying={isPlaying} volume={player.volume} />
+        <CircularVisualizer
+          isPlaying={isPlaying}
+          volume={player.volume}
+          trackId={current}
+          position={player.position}
+        />
 
         {/* Circular Floating Bubble */}
         <div className={`mini-circle-bubble ${isPlaying ? "is-playing" : ""}`}>

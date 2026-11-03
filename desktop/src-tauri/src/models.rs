@@ -102,6 +102,62 @@ pub struct Device {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HotkeyConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_hotkey_toggle")]
+    pub toggle: String,
+    #[serde(default = "default_hotkey_next")]
+    pub next: String,
+    #[serde(default = "default_hotkey_prev")]
+    pub prev: String,
+    #[serde(default = "default_hotkey_volume_up")]
+    pub volume_up: String,
+    #[serde(default = "default_hotkey_volume_down")]
+    pub volume_down: String,
+    #[serde(default = "default_hotkey_toggle_overlay")]
+    pub toggle_overlay: String,
+}
+
+fn default_hotkey_toggle() -> String {
+    "Ctrl+Alt+Space".to_string()
+}
+fn default_hotkey_next() -> String {
+    "Ctrl+Alt+Right".to_string()
+}
+fn default_hotkey_prev() -> String {
+    "Ctrl+Alt+Left".to_string()
+}
+fn default_hotkey_volume_up() -> String {
+    "Ctrl+Alt+Up".to_string()
+}
+fn default_hotkey_volume_down() -> String {
+    "Ctrl+Alt+Down".to_string()
+}
+fn default_hotkey_toggle_overlay() -> String {
+    "Ctrl+Alt+W".to_string()
+}
+
+impl Default for HotkeyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            toggle: default_hotkey_toggle(),
+            next: default_hotkey_next(),
+            prev: default_hotkey_prev(),
+            volume_up: default_hotkey_volume_up(),
+            volume_down: default_hotkey_volume_down(),
+            toggle_overlay: default_hotkey_toggle_overlay(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub volume: f64,
     pub mpv_path: Option<String>,
@@ -109,6 +165,10 @@ pub struct Settings {
     pub theme: String,
     #[serde(default = "default_cache_mode")]
     pub cache_mode: String,
+    #[serde(default = "default_true")]
+    pub expand_on_hotkey: bool,
+    #[serde(default)]
+    pub hotkeys: HotkeyConfig,
 }
 
 fn default_cache_mode() -> String {
@@ -122,6 +182,8 @@ impl Default for Settings {
             mpv_path: None,
             theme: default_theme(),
             cache_mode: default_cache_mode(),
+            expand_on_hotkey: default_true(),
+            hotkeys: HotkeyConfig::default(),
         }
     }
 }

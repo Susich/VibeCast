@@ -9,6 +9,7 @@ import type {
   CacheStats,
   Device,
   Facets,
+  HotkeyConfig,
   LibraryStats,
   OverlayState,
   PlayerState,
@@ -65,8 +66,10 @@ interface Store {
 
   theme: string;
   isOverlay: boolean;
+  isRecordingHotkey: boolean;
 
   init: () => Promise<void>;
+  setRecordingHotkey: (recording: boolean) => void;
   setTheme: (theme: string) => Promise<void>;
   toggleOverlay: (enable?: boolean) => Promise<void>;
   refreshLibrary: () => Promise<void>;
@@ -96,6 +99,8 @@ interface Store {
   connectSaved: (url: string, silent?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
   updateMpvPath: (path: string) => Promise<void>;
+  setExpandOnHotkey: (expand: boolean) => Promise<void>;
+  saveHotkeys: (hotkeys: HotkeyConfig) => Promise<void>;
   clearCache: () => Promise<void>;
   setCacheMode: (mode: "auto" | "manual") => Promise<void>;
   deleteCachedTrack: (trackId: string) => Promise<void>;
@@ -182,6 +187,12 @@ export const useStore = create<Store>()((set, get) => ({
   toasts: [],
   theme: "cyberpunk",
   isOverlay: false,
+  isRecordingHotkey: false,
+
+  setRecordingHotkey(recording: boolean) {
+    set({ isRecordingHotkey: recording });
+    void call("pause_hotkeys", { pause: recording }).catch(() => undefined);
+  },
 
   async init() {
     if (get().booted || initializing) return;
@@ -635,6 +646,32 @@ export const useStore = create<Store>()((set, get) => ({
       get().addToast("Настройки сохранены", "success");
     } catch (error) {
       get().addToast(errorText(error), "error");
+    }
+  },
+
+  async setExpandOnHotkey(expand: boolean) {
+    set({
+      settings: { ...get().settings, expandOnHotkey: expand },
+    });
+    try {
+      await call("set_expand_on_hotkey", { expand });
+    } catch {
+      // fallback
+    }
+  },
+
+  async saveHotkeys(hotkeys: HotkeyConfig) {
+    set({
+      settings: { ...get().settings, hotkeys },
+    });
+    try {
+      const saved = await call<HotkeyConfig>("save_hotkeys", { hotkeys });
+      set({
+        settings: { ...get().settings, hotkeys: saved },
+      });
+      get().addToast("Горячие клавиши сохранены", "success");
+    } catch (error) {
+      get().addToast(`Ошибка сохранения горячих клавиш: ${errorText(error)}`, "error");
     }
   },
 

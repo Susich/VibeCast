@@ -55,7 +55,22 @@ impl AppState {
             .get_setting("cache_mode")
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "auto".to_string());
-        let settings = Settings { volume, mpv_path, theme, cache_mode };
+        let expand_on_hotkey = db
+            .get_setting("expand_on_hotkey")
+            .map(|value| value == "true")
+            .unwrap_or(true);
+        let hotkeys: crate::models::HotkeyConfig = db
+            .get_setting("hotkeys")
+            .and_then(|val| serde_json::from_str(&val).ok())
+            .unwrap_or_default();
+        let settings = Settings {
+            volume,
+            mpv_path,
+            theme,
+            cache_mode,
+            expand_on_hotkey,
+            hotkeys,
+        };
 
         let http = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(5))
@@ -96,6 +111,10 @@ impl AppState {
             .read()
             .map(|settings| settings.clone())
             .unwrap_or_default()
+    }
+
+    pub fn hotkeys(&self) -> crate::models::HotkeyConfig {
+        self.settings().hotkeys
     }
 
     pub fn server_view(&self) -> Option<ServerView> {

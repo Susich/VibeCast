@@ -524,6 +524,8 @@ pub fn sync_to_config_json(state: &AppState) {
         "volume": settings.volume,
         "mpvPath": settings.mpv_path,
         "cacheMode": settings.cache_mode,
+        "expandOnHotkey": settings.expand_on_hotkey,
+        "hotkeys": settings.hotkeys,
         "overlay": {
             "alwaysOnTop": true,
             "isOverlay": is_overlay,
@@ -542,6 +544,88 @@ pub fn sync_to_config_json(state: &AppState) {
             let _ = std::fs::write(config_dir.join("config.json"), &content);
         }
     }
+}
+
+#[tauri::command]
+pub fn set_expand_on_hotkey(
+    state: State<'_, AppState>,
+    expand: bool,
+) -> Result<bool, String> {
+    {
+        let mut settings = state
+            .settings
+            .write()
+            .map_err(|_| "Настройки недоступны".to_string())?;
+        settings.expand_on_hotkey = expand;
+    }
+    state.db.set_setting("expand_on_hotkey", &expand.to_string())?;
+    sync_to_config_json(state.inner());
+    Ok(expand)
+}
+
+#[tauri::command]
+pub fn save_hotkeys(
+    state: State<'_, AppState>,
+    hotkeys: crate::models::HotkeyConfig,
+) -> Result<crate::models::HotkeyConfig, String> {
+    let json_str = serde_json::to_string(&hotkeys).map_err(|e| e.to_string())?;
+    {
+        let mut settings = state
+            .settings
+            .write()
+            .map_err(|_| "Настройки недоступны".to_string())?;
+        settings.hotkeys = hotkeys.clone();
+    }
+    state.db.set_setting("hotkeys", &json_str)?;
+    sync_to_config_json(state.inner());
+    crate::hotkeys::reload_hotkeys();
+    Ok(hotkeys)
+}
+
+#[tauri::command]
+pub fn get_hotkeys(state: State<'_, AppState>) -> crate::models::HotkeyConfig {
+    state.hotkeys()
+}
+
+#[tauri::command]
+pub fn pause_hotkeys(pause: bool) {
+    crate::hotkeys::set_hotkeys_paused(pause);
+}
+
+#[tauri::command]
+pub async fn get_track_audio(
+    state: State<'_, AppState>,
+    track_id: String,
+) -> Result<tauri::ipc::Response, String> {
+    if let Some(path) = state.cache.cached_path_for_id(&track_id) {
+        let bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|e| format!("Не удалось прочитать кэшированный трек: {e}"))?;
+        return Ok(tauri::ipc::Response::new(bytes));
+    }
+
+    let track = state
+        .db
+        .get_track(&track_id)?
+        .ok_or_else(|| "Трек не найден".to_string())?;
+    let session = state
+        .session()
+        .ok_or_else(|| "Телефон недоступен".to_string())?;
+    let url = format!("{}/stream/{}", session.base_url.trim_end_matches('/'), track.id);
+    let resp = state
+        .http
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", session.token))
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка загрузки аудио: {e}"))?;
+
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Ошибка чтения потока: {e}"))?;
+
+    Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
 #[tauri::command]
@@ -593,6 +677,8 @@ pub async fn set_overlay_mode(
             }
         }
 
+        // Cleanly clear maximize state before turning into a compact borderless overlay
+        let _ = window.unmaximize();
         let _ = window.set_decorations(false);
         let _ = window.set_shadow(false);
         let _ = window.set_always_on_top(true);
@@ -629,16 +715,24 @@ pub async fn set_overlay_mode(
             }
         }
 
+        // Immediately update DB is_overlay so any concurrent set_overlay_compact calls exit immediately
+        let _ = state.db.set_setting("is_overlay", "false");
+        sync_to_config_json(state.inner());
+
+        let _ = window.unmaximize();
         let _ = window.set_always_on_top(false);
         let _ = window.set_shadow(true);
         let _ = window.set_decorations(true);
         let _ = window.set_resizable(true);
 
+        // Ensure proper baseline restore geometry before maximizing
+        let _ = window.set_size(tauri::LogicalSize::new(1200.0, 680.0));
+        let _ = window.center();
+
         // Restore window to maximized (во весь экран)
         let _ = window.maximize();
-
-        let _ = state.db.set_setting("is_overlay", "false");
-        sync_to_config_json(state.inner());
+        let _ = window.show();
+        let _ = window.set_focus();
 
         Ok(OverlayState {
             is_overlay: false,
@@ -662,8 +756,19 @@ pub fn save_overlay_position(state: State<'_, AppState>, x: i32, y: i32) -> Resu
 #[tauri::command]
 pub async fn set_overlay_compact(
     window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
     compact: bool,
 ) -> Result<(), String> {
+    let is_overlay = state
+        .db
+        .get_setting("is_overlay")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    // Never resize if overlay mode is turned off!
+    if !is_overlay {
+        return Ok(());
+    }
+
     if window.is_minimized().unwrap_or(false) {
         return Ok(());
     }
@@ -711,8 +816,22 @@ pub async fn set_overlay_compact(
 }
 
 #[tauri::command]
-pub fn start_window_drag(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.start_dragging().map_err(|e| e.to_string())
+pub fn start_window_drag(window: tauri::WebviewWindow) -> Result<bool, String> {
+    let start_pos = window.outer_position().ok();
+    let drag_res = window.start_dragging();
+    let end_pos = window.outer_position().ok();
+
+    if drag_res.is_err() {
+        return Ok(false);
+    }
+
+    if let (Some(s), Some(e)) = (start_pos, end_pos) {
+        let dx = (s.x - e.x).abs();
+        let dy = (s.y - e.y).abs();
+        Ok(dx > 3 || dy > 3)
+    } else {
+        Ok(true)
+    }
 }
 
 #[tauri::command]

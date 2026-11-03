@@ -55,11 +55,23 @@ export interface PlayerState {
   error: string | null;
 }
 
+export interface HotkeyConfig {
+  enabled?: boolean;
+  toggle: string;
+  next: string;
+  prev: string;
+  volumeUp: string;
+  volumeDown: string;
+  toggleOverlay: string;
+}
+
 export interface Settings {
   volume: number;
   mpvPath: string | null;
   theme?: string;
   cacheMode?: "auto" | "manual";
+  expandOnHotkey?: boolean;
+  hotkeys?: HotkeyConfig;
 }
 
 export interface OverlayState {
@@ -74,6 +86,8 @@ export interface AppConfig {
   mpvPath: string | null;
   overlay: OverlayState;
   cacheMode?: "auto" | "manual";
+  expandOnHotkey?: boolean;
+  hotkeys?: HotkeyConfig;
 }
 
 export interface LibraryStats {

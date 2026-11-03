@@ -1,14 +1,24 @@
 {
   "cacheMode": "auto",
+  "expandOnHotkey": true,
+  "hotkeys": {
+    "enabled": true,
+    "next": "Ctrl+Alt+Right",
+    "prev": "Ctrl+Alt+Left",
+    "toggle": "Ctrl+Alt+Space",
+    "toggleOverlay": "Ctrl+Alt+W",
+    "volumeDown": "Ctrl+Alt+Down",
+    "volumeUp": "Ctrl+Alt+Up"
+  },
   "mpvPath": null,
   "overlay": {
     "alwaysOnTop": true,
     "height": 140,
-    "isOverlay": false,
-    "lastX": 35,
-    "lastY": 26,
+    "isOverlay": true,
+    "lastX": 24,
+    "lastY": 10,
     "width": 380
   },
-  "theme": "tokyo",
+  "theme": "amethyst",
   "volume": 100.0
 }
