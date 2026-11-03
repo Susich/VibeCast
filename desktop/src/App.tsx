@@ -41,17 +41,24 @@ function ViewHeader() {
     title = artist;
   }
 
+  const hasFilter = Boolean((artist || album) && view === "tracks");
+
   return (
     <div className="view-header">
       <div className="view-header-main" key={title}>
-        <h1 className="view-title-anim">{title}</h1>
-        <span className="view-count view-count-anim">{loading ? "…" : countStr}</span>
+        <div className="view-title-group">
+          <h1 className="view-title-anim">{title}</h1>
+          <span className="view-count view-count-anim">{loading ? "…" : countStr}</span>
+        </div>
       </div>
-      {(artist || album) && view === "tracks" && (
-        <button className="filter-chip" onClick={clearFilters} title="Сбросить фильтр">
-          {album && artist ? `${artist} — ${album}` : album ?? artist}
-          <XIcon size={12} />
-        </button>
+      {hasFilter && (
+        <div className="view-filter-bar">
+          <span className="filter-badge-label">Фильтр:</span>
+          <button className="filter-chip" onClick={clearFilters} title="Сбросить фильтр и показать все треки">
+            <span className="filter-chip-text">{album && artist ? `${artist} — ${album}` : album ?? artist}</span>
+            <XIcon size={12} />
+          </button>
+        </div>
       )}
     </div>
   );

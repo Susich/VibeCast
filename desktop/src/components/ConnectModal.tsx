@@ -75,7 +75,7 @@ export function ConnectModal() {
             <span className="eyebrow">Локальная сеть</span>
             <h2>Подключить телефон</h2>
           </div>
-          <button className="icon-button ghost" onClick={close} disabled={connecting} title="Закрыть">
+          <button className="icon-button ghost modal-close-btn" onClick={close} disabled={connecting} title="Закрыть">
             <XIcon size={19} />
           </button>
         </header>

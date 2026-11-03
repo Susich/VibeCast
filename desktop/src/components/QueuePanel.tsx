@@ -41,7 +41,7 @@ export function QueuePanel() {
                 <TrashIcon size={17} />
               </button>
             )}
-            <button className="icon-button ghost" onClick={toggleQueue} title="Закрыть">
+            <button className="icon-button ghost modal-close-btn" onClick={toggleQueue} title="Закрыть">
               <XIcon size={18} />
             </button>
           </div>
