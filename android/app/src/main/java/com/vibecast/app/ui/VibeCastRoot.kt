@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -388,9 +389,9 @@ private fun RemotePlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Медиатека",
+                    "Медиатека на телефоне",
                     color = VibeText,
-                    fontSize = 19.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Surface(
@@ -460,100 +461,104 @@ private fun RemotePlayerScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // Filter & Folder Action Bar (Balanced 50/50 Row)
+            // Filter & Folder Action Bar
+            val isFolderFiltered = selectedFolders.isNotEmpty()
+            val isSortFiltered = currentSort != TrackSort.TITLE_ASC
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp),
+                    .padding(bottom = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Folder Button
-                val isFolderFiltered = selectedFolders.isNotEmpty()
                 Surface(
                     onClick = { showFolderDialog = true },
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp)
+                        .height(40.dp)
                         .border(
                             1.dp,
-                            if (isFolderFiltered) VibeGreen.copy(alpha = 0.5f) else Color(0xFF223040),
+                            if (isFolderFiltered) VibeGreen.copy(alpha = 0.6f) else Color(0xFF2A3848),
                             RoundedCornerShape(12.dp),
                         ),
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isFolderFiltered) Color(0xFF0F261B) else VibeSurface,
+                    color = if (isFolderFiltered) Color(0xFF0F261B) else VibeSurfaceHigh,
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 10.dp),
+                            .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.FolderOpen,
                             contentDescription = "Папки",
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(17.dp),
                             tint = if (isFolderFiltered) VibeGreen else VibeMuted,
                         )
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(7.dp))
                         Text(
-                            text = if (!isFolderFiltered) "Все папки" else "Папки (${selectedFolders.size})",
+                            text = if (!isFolderFiltered) "Папки" else "Папки (${selectedFolders.size})",
                             color = if (isFolderFiltered) VibeGreen else VibeText,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.sp,
+                            fontWeight = if (isFolderFiltered) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
                         Spacer(Modifier.width(4.dp))
                         Icon(
                             imageVector = Icons.Rounded.ArrowDropDown,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = VibeMuted,
+                            modifier = Modifier.size(18.dp),
+                            tint = if (isFolderFiltered) VibeGreen else VibeMuted,
                         )
                     }
                 }
 
-                // Sort Dropdown Button
+                // Filter / Sort Dropdown Button
                 Box(modifier = Modifier.weight(1f)) {
                     Surface(
                         onClick = { showSortMenu = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(38.dp)
-                            .border(1.dp, Color(0xFF223040), RoundedCornerShape(12.dp)),
+                            .height(40.dp)
+                            .border(
+                                1.dp,
+                                if (isSortFiltered) VibeGreen.copy(alpha = 0.6f) else Color(0xFF2A3848),
+                                RoundedCornerShape(12.dp),
+                            ),
                         shape = RoundedCornerShape(12.dp),
-                        color = VibeSurface,
+                        color = if (isSortFiltered) Color(0xFF0F261B) else VibeSurfaceHigh,
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 10.dp),
+                                .padding(horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center,
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.Sort,
-                                contentDescription = "Сортировка",
-                                modifier = Modifier.size(16.dp),
-                                tint = VibeGreen,
+                                contentDescription = "Фильтр",
+                                modifier = Modifier.size(17.dp),
+                                tint = if (isSortFiltered) VibeGreen else VibeMuted,
                             )
-                            Spacer(Modifier.width(6.dp))
+                            Spacer(Modifier.width(7.dp))
                             Text(
-                                text = currentSort.shortTitle,
-                                color = VibeText,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
+                                text = "Фильтр",
+                                color = if (isSortFiltered) VibeGreen else VibeText,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSortFiltered) FontWeight.SemiBold else FontWeight.Medium,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
                             )
                             Spacer(Modifier.width(4.dp))
                             Icon(
                                 imageVector = Icons.Rounded.ArrowDropDown,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = VibeMuted,
+                                modifier = Modifier.size(18.dp),
+                                tint = if (isSortFiltered) VibeGreen else VibeMuted,
                             )
                         }
                     }
@@ -562,6 +567,7 @@ private fun RemotePlayerScreen(
                         expanded = showSortMenu,
                         onDismissRequest = { showSortMenu = false },
                         modifier = Modifier
+                            .widthIn(min = 210.dp)
                             .background(VibeSurfaceHigh)
                             .border(1.dp, Color(0xFF2E3E50), RoundedCornerShape(12.dp)),
                     ) {
@@ -584,6 +590,7 @@ private fun RemotePlayerScreen(
                                             sort.title,
                                             color = if (currentSort == sort) VibeGreen else VibeText,
                                             fontSize = 13.sp,
+                                            fontWeight = if (currentSort == sort) FontWeight.SemiBold else FontWeight.Normal,
                                         )
                                     }
                                 },
@@ -594,6 +601,51 @@ private fun RemotePlayerScreen(
                             )
                         }
                     }
+                }
+            }
+
+            // Active Filter & Sort Status Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = buildString {
+                        append("Сортировка: ")
+                        append(currentSort.title)
+                        if (isFolderFiltered) {
+                            append(" • Папки: ")
+                            append(selectedFolders.size)
+                        }
+                    },
+                    color = if (isSortFiltered || isFolderFiltered) VibeGreen.copy(alpha = 0.9f) else VibeMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (isSortFiltered || isFolderFiltered || searchQuery.isNotEmpty()) {
+                    Text(
+                        text = "Сбросить",
+                        color = VibeGreen,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clickable {
+                                currentSort = TrackSort.TITLE_ASC
+                                searchQuery = ""
+                                if (isFolderFiltered) {
+                                    scope.launch {
+                                        repo?.setSelectedFolders(emptySet())
+                                        ServerService.rescan(context)
+                                    }
+                                }
+                            }
+                            .padding(start = 8.dp),
+                    )
                 }
             }
 
