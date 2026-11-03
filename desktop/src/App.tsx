@@ -43,9 +43,9 @@ function ViewHeader() {
 
   return (
     <div className="view-header">
-      <div className="view-header-main">
-        <h1>{title}</h1>
-        <span className="view-count">{loading ? "…" : countStr}</span>
+      <div className="view-header-main" key={title}>
+        <h1 className="view-title-anim">{title}</h1>
+        <span className="view-count view-count-anim">{loading ? "…" : countStr}</span>
       </div>
       {(artist || album) && view === "tracks" && (
         <button className="filter-chip" onClick={clearFilters} title="Сбросить фильтр">
@@ -102,6 +102,8 @@ export default function App() {
   const bootError = useStore((state) => state.bootError);
   const server = useStore((state) => state.server);
   const view = useStore((state) => state.view);
+  const artist = useStore((state) => state.artist);
+  const album = useStore((state) => state.album);
   const search = useStore((state) => state.search);
   const connectOpen = useStore((state) => state.connectOpen);
   const settingsOpen = useStore((state) => state.settingsOpen);
@@ -198,9 +200,11 @@ export default function App() {
         <main className="content">
           <ViewHeader />
           {loading && <div className="refresh-line" />}
-          {(view === "tracks" || view === "cached") && <TrackList />}
-          {view === "artists" && <ArtistsView />}
-          {view === "albums" && <AlbumsView />}
+          <div key={`${view}-${artist ?? ""}-${album ?? ""}`} className="view-page-transition">
+            {(view === "tracks" || view === "cached") && <TrackList />}
+            {view === "artists" && <ArtistsView />}
+            {view === "albums" && <AlbumsView />}
+          </div>
         </main>
       </div>
       <PlayerBar />

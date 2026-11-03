@@ -1,6 +1,8 @@
 import { useStore } from "../store";
 import type { SortKey } from "../lib/types";
+import { CustomDropdown } from "./CustomDropdown";
 import {
+  ArrowUpDownIcon,
   RefreshIcon,
   SearchIcon,
   SettingsIcon,
@@ -48,18 +50,16 @@ export function TopBar() {
       </div>
 
       <div className="topbar-actions">
-        <label className="sort-select" title="Сортировка">
-          <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-            {sortOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CustomDropdown
+          value={sort}
+          options={sortOptions}
+          onChange={(newSort) => setSort(newSort)}
+          title="Сортировка каталога"
+          icon={<ArrowUpDownIcon size={14} />}
+        />
 
         <button
-          className="icon-button"
+          className="icon-button topbar-btn"
           title="Обновить каталог"
           onClick={() => (server ? void resync() : openConnect())}
           disabled={!server || loading}
@@ -67,7 +67,7 @@ export function TopBar() {
           <RefreshIcon size={18} className={loading ? "spin" : undefined} />
         </button>
 
-        <button className="icon-button" title="Настройки" onClick={openSettings}>
+        <button className="icon-button topbar-btn settings-btn" title="Настройки" onClick={openSettings}>
           <SettingsIcon size={18} />
         </button>
       </div>

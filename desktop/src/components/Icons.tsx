@@ -315,6 +315,25 @@ export function ChevronRightIcon(props: IconProps) {
   });
 }
 
+export function ChevronDownIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: <path d="m6 9 6 6 6-6" />,
+  });
+}
+
+export function ArrowUpDownIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <path d="m7 15 5 5 5-5" />
+        <path d="m7 9 5-5 5 5" />
+      </>
+    ),
+  });
+}
+
 export function RadioIcon(props: IconProps) {
   return base({
     ...props,
