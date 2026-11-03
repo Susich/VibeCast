@@ -1770,11 +1770,14 @@ private fun StatusCard(state: ServerRuntime.State) {
                 Text(title, color = VibeText, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
             }
             Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("Адрес", if (state.running && state.ip != null) "${state.ip}:${state.port}" else "—")
-                Metric("Треков", if (state.trackCount > 0) state.trackCount.toString() else "—")
-                Metric("Папки", if (selectedFoldersCount > 0) "$selectedFoldersCount выбрано" else "Все")
-                Metric("Каталог", if (state.version > 0) "#${state.version}" else "—")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Metric("Адрес", if (state.running && state.ip != null) "${state.ip}:${state.port}" else "—", Modifier.weight(1.3f))
+                Metric("Каталог", if (state.version > 0) "#${state.version}" else "—", Modifier.weight(0.7f))
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Metric("Треков", if (state.trackCount > 0) state.trackCount.toString() else "—", Modifier.weight(1.3f))
+                Metric("Папки", if (selectedFoldersCount > 0) "$selectedFoldersCount выбрано" else "Все", Modifier.weight(0.7f))
             }
             if (state.token.isNotBlank()) {
                 Spacer(Modifier.height(18.dp))
@@ -1785,11 +1788,18 @@ private fun StatusCard(state: ServerRuntime.State) {
 }
 
 @Composable
-private fun Metric(label: String, value: String) {
-    Column {
-        Text(label, color = VibeMuted, fontSize = 11.sp)
+private fun Metric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label, color = VibeMuted, fontSize = 11.sp, maxLines = 1)
         Spacer(Modifier.height(4.dp))
-        Text(value, color = VibeText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Text(
+            value,
+            color = VibeText,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

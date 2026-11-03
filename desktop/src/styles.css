@@ -3040,21 +3040,23 @@ body.is-overlay #root,
 }
 
 .mini-circle-bubble.is-playing {
-  animation: bubble-glow-beat 1.8s ease-in-out infinite alternate;
+  animation: bubble-glow-beat 1.6s ease-in-out infinite alternate;
 }
 
 @keyframes bubble-glow-beat {
   0% {
     box-shadow:
-      0 4px 12px rgba(0, 0, 0, 0.6),
-      0 0 8px var(--accent);
-    border-color: var(--accent);
+      0 4px 14px rgba(0, 0, 0, 0.7),
+      0 0 12px rgba(41, 121, 255, 0.7),
+      inset 0 0 8px rgba(0, 240, 255, 0.2);
+    border-color: #2979ff;
   }
   100% {
     box-shadow:
-      0 4px 14px rgba(0, 0, 0, 0.7),
-      0 0 14px #bd93f9;
-    border-color: #bd93f9;
+      0 4px 16px rgba(0, 0, 0, 0.8),
+      0 0 18px rgba(0, 229, 255, 0.85),
+      inset 0 0 12px rgba(0, 229, 255, 0.35);
+    border-color: #00e5ff;
   }
 }
 
@@ -3065,6 +3067,20 @@ body.is-overlay #root,
   border-radius: 9px;
   pointer-events: none;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  transition: transform 0.25s ease;
+}
+
+.mini-circle-bubble.is-playing .mini-circle-logo {
+  animation: logo-gentle-pulse 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes logo-gentle-pulse {
+  0% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1.04);
+  }
 }
 
 /* Concentric Neon Ripple Waves when music is playing */

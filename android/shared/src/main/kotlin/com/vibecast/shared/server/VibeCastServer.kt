@@ -50,7 +50,7 @@ interface AudioSource : Closeable {
 data class ServerConfig(
     val token: String,
     val protocolVersion: Int = HealthDto.PROTOCOL_VERSION,
-    val appVersion: String = "0.2.3",
+    val appVersion: String = "0.2.4",
     val requireAuth: Boolean = false,
 )
 

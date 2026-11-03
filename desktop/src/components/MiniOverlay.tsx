@@ -5,6 +5,7 @@ import { call } from "../lib/api";
 import { formatTime } from "../lib/format";
 import { useStore } from "../store";
 import { Cover } from "./Cover";
+import { CircularVisualizer } from "./CircularVisualizer";
 import {
   ExpandIcon,
   MinimizeIcon,
@@ -214,9 +215,8 @@ export function MiniOverlay() {
             : "VibeCast · Нажмите для управления"
         }
       >
-        {/* Animated Concentric Soundwave Ripples when music is playing */}
-        <div className={`circle-wave wave-1 ${isPlaying ? "active" : ""}`} />
-        <div className={`circle-wave wave-2 ${isPlaying ? "active" : ""}`} />
+        {/* Radial Circular Equalizer Spectrum Visualizer */}
+        <CircularVisualizer isPlaying={isPlaying} volume={player.volume} />
 
         {/* Circular Floating Bubble */}
         <div className={`mini-circle-bubble ${isPlaying ? "is-playing" : ""}`}>

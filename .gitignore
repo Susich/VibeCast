@@ -22,6 +22,7 @@ android/.idea/
 android/*.iml
 android/captures/
 *.apk
+!release/*.apk
 *.aab
 *.ap_
 *.dex
