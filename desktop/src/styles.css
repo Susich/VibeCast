@@ -113,6 +113,39 @@ input::placeholder {
   grid-template-rows: minmax(0, 1fr) 92px;
   height: 100vh;
   overflow: hidden;
+  animation: app-appear 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center center;
+}
+
+@keyframes app-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+}
+
+.app.collapsing-to-widget {
+  animation: app-collapse-to-widget 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  pointer-events: none !important;
+}
+
+@keyframes app-collapse-to-widget {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: blur(8px);
+  }
 }
 
 /* ---------- Sidebar ---------- */
@@ -2972,6 +3005,18 @@ body.is-overlay #root,
   justify-content: center;
   overflow: hidden;
   user-select: none;
+  animation: overlay-root-fade 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes overlay-root-fade {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ==========================================================================
@@ -2985,7 +3030,8 @@ body.is-overlay #root,
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
@@ -2993,7 +3039,8 @@ body.is-overlay #root,
   outline: none !important;
   box-shadow: none !important;
   user-select: none;
-  animation: circle-pop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: circle-pop 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center center;
 }
 
 .mini-circle-root:active {
@@ -3003,11 +3050,13 @@ body.is-overlay #root,
 @keyframes circle-pop {
   0% {
     opacity: 0;
-    transform: scale(0.85);
+    transform: scale(0.68);
+    filter: blur(4px);
   }
   100% {
     opacity: 1;
     transform: scale(1);
+    filter: blur(0px);
   }
 }
 
@@ -3024,12 +3073,16 @@ body.is-overlay #root,
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: grab;
   transition:
-    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
   z-index: 2;
+}
+
+.mini-circle-bubble:active {
+  cursor: grabbing;
 }
 
 .mini-circle-bubble:hover {
@@ -3166,17 +3219,57 @@ body.is-overlay #root,
   overflow: hidden;
   cursor: grab;
   user-select: none;
-  animation: mini-expand 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: mini-expand 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center center;
+  transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mini-overlay.collapsing {
+  animation: mini-collapse 0.16s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.mini-overlay.expanding-to-full,
+.mini-circle-root.expanding-to-full {
+  animation: widget-expand-to-full 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  pointer-events: none !important;
+}
+
+@keyframes widget-expand-to-full {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+    filter: blur(8px);
+  }
 }
 
 @keyframes mini-expand {
   0% {
     opacity: 0;
-    transform: scale(0.92);
+    transform: scale(0.86);
+    filter: blur(4px);
   }
   100% {
     opacity: 1;
     transform: scale(1);
+    filter: blur(0px);
+  }
+}
+
+@keyframes mini-collapse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.82);
+    filter: blur(4px);
   }
 }
 

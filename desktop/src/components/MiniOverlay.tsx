@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent } from "react";
+import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 
 import { call } from "../lib/api";
 import { formatTime } from "../lib/format";
@@ -27,14 +27,21 @@ export function MiniOverlay() {
   const seek = useStore((state) => state.seek);
   const setVolume = useStore((state) => state.setVolume);
   const toggleOverlay = useStore((state) => state.toggleOverlay);
+  const overlayTransition = useStore((state) => state.overlayTransition);
   const expandOnHotkey = useStore((state) => state.settings.expandOnHotkey ?? true);
 
-  // Expanded = full player controls (390x185); Collapsed = compact circular bubble (88x88)
+  // Expanded = full player controls (390x185); Collapsed = compact circular bubble (120x120)
   const [expanded, setExpanded] = useState(true);
+  const [isCollapsing, setIsCollapsing] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [lastVolume, setLastVolume] = useState(80);
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHoveredRef = useRef(false);
+  const pinnedRef = useRef(pinned);
+
+  useEffect(() => {
+    pinnedRef.current = pinned;
+  }, [pinned]);
 
   const isMuted = player.volume === 0;
   const current = player.currentTrackId;
@@ -47,31 +54,38 @@ export function MiniOverlay() {
     }
   }, []);
 
-  const updateWindowSize = useCallback((isExp: boolean) => {
-    void call("set_overlay_compact", { compact: !isExp }).catch(() => undefined);
-  }, []);
-
   const collapse = useCallback(() => {
+    if (pinnedRef.current) return;
     clearTimer();
-    setExpanded(false);
-    updateWindowSize(false);
-  }, [clearTimer, updateWindowSize]);
+    setIsCollapsing(true);
+    setTimeout(async () => {
+      if (pinnedRef.current) {
+        setIsCollapsing(false);
+        return;
+      }
+      setExpanded(false);
+      setIsCollapsing(false);
+      await call("set_overlay_compact", { compact: true }).catch(() => undefined);
+    }, 160);
+  }, [clearTimer]);
 
   const expandWithTimer = useCallback(
-    (durationMs = 4500) => {
-      setExpanded(true);
-      updateWindowSize(true);
+    async (durationMs = 5000) => {
       clearTimer();
+      // Ensure the Tauri window is resized and positioned FIRST before rendering expanded card
+      await call("set_overlay_compact", { compact: false }).catch(() => undefined);
+      setExpanded(true);
+      setIsCollapsing(false);
 
-      if (!pinned && !isHoveredRef.current) {
+      if (!pinnedRef.current && !isHoveredRef.current) {
         collapseTimerRef.current = setTimeout(() => {
-          if (!isHoveredRef.current) {
+          if (!isHoveredRef.current && !pinnedRef.current) {
             collapse();
           }
         }, durationMs);
       }
     },
-    [clearTimer, collapse, pinned, updateWindowSize],
+    [clearTimer, collapse],
   );
 
   // Listen to global hotkey triggers to reveal full player (if enabled in settings)
@@ -80,7 +94,7 @@ export function MiniOverlay() {
       const customEvent = e as CustomEvent<{ action: string }>;
       if (customEvent.detail?.action && customEvent.detail.action !== "toggle_overlay") {
         if (expandOnHotkey) {
-          expandWithTimer(4500);
+          void expandWithTimer(5000);
         }
       }
     };
@@ -98,18 +112,17 @@ export function MiniOverlay() {
     };
   }, [clearTimer]);
 
-  // Initial mount: show full player for 4.5s then gently collapse to circle
+  // Initial mount: show big player first, then auto-collapse to circle after 5s
   useEffect(() => {
-    updateWindowSize(true);
     collapseTimerRef.current = setTimeout(() => {
-      if (!isHoveredRef.current) {
+      if (!isHoveredRef.current && !pinnedRef.current) {
         collapse();
       }
-    }, 4500);
+    }, 5000);
     return () => {
       clearTimer();
     };
-  }, [clearTimer, collapse, updateWindowSize]);
+  }, [clearTimer, collapse]);
 
   // When app is minimized (hidden), pause/clear collapse timer so we never resize while minimized
   useEffect(() => {
@@ -135,7 +148,7 @@ export function MiniOverlay() {
     ) {
       return;
     }
-    void call("start_window_drag").catch(() => undefined);
+    void call("start_clamped_drag").catch(() => undefined);
   };
 
   const handleMuteToggle = () => {
@@ -161,8 +174,8 @@ export function MiniOverlay() {
 
   const onMouseLeave = () => {
     isHoveredRef.current = false;
-    if (expanded && !pinned) {
-      expandWithTimer(3000);
+    if (expanded && !pinnedRef.current) {
+      void expandWithTimer(5000);
     }
   };
 
@@ -173,36 +186,74 @@ export function MiniOverlay() {
 
   const volumeScale = isPlaying ? Math.max(0.3, player.volume / 100) : 0;
 
-  // Immediate drag handling: grabs instantly on mousedown, locks cursor to circle,
-  // and expands widget if mouse was clicked without dragging.
-  const isDraggingCircleRef = useRef(false);
+  // Track pointer interactions on circle: separate dragging from clicking
+  const pointerStartRef = useRef<{
+    clientX: number;
+    clientY: number;
+    moved: boolean;
+  } | null>(null);
 
-  const handleCircleMouseDown = async (e: MouseEvent) => {
+  const handleCirclePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (isDraggingCircleRef.current) return;
-    isDraggingCircleRef.current = true;
-
+    pointerStartRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      moved: false,
+    };
     try {
-      const moved = await call<boolean>("start_window_drag");
-      if (!moved) {
-        expandWithTimer(5000);
-      }
-    } catch {
-      expandWithTimer(5000);
-    } finally {
-      isDraggingCircleRef.current = false;
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  const handleCirclePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = pointerStartRef.current;
+    if (!start || start.moved) return;
+
+    const dx = e.clientX - start.clientX;
+    const dy = e.clientY - start.clientY;
+    // If pointer moves at least 4 pixels, user is dragging the widget
+    if (Math.hypot(dx, dy) >= 4) {
+      start.moved = true;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+      void call("start_clamped_drag").catch(() => undefined);
     }
   };
+
+  const handleCirclePointerUp = async (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+
+    // Genuine click: pointer moved less than 6px
+    if (start && !start.moved) {
+      await expandWithTimer(5000);
+    }
+  };
+
+  const handleCirclePointerCancel = (e: ReactPointerEvent<HTMLDivElement>) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+    pointerStartRef.current = null;
+  };
+
+  const isExpandingToFull = overlayTransition === "expanding_to_full";
 
   // VIEW 1: Compact Floating Circle with Music Wave Aura (When Collapsed)
   if (!expanded) {
     return (
       <div
-        className="mini-circle-root"
-        onMouseDown={handleCircleMouseDown}
+        className={`mini-circle-root ${isExpandingToFull ? "expanding-to-full" : ""}`}
+        onPointerDown={handleCirclePointerDown}
+        onPointerMove={handleCirclePointerMove}
+        onPointerUp={handleCirclePointerUp}
+        onPointerCancel={handleCirclePointerCancel}
         title={
           isPlaying
             ? `${player.title ?? "VibeCast"} · Нажмите для управления`
@@ -233,7 +284,7 @@ export function MiniOverlay() {
   // VIEW 2: Full Player Card (When Expanded via hotkey, click, or pin)
   return (
     <div
-      className="mini-overlay"
+      className={`mini-overlay ${isCollapsing ? "collapsing" : ""} ${isExpandingToFull ? "expanding-to-full" : ""}`}
       data-tauri-drag-region
       onMouseDown={handleStartDrag}
       onMouseEnter={onMouseEnter}
@@ -255,8 +306,11 @@ export function MiniOverlay() {
             onClick={() => {
               const nextPin = !pinned;
               setPinned(nextPin);
+              pinnedRef.current = nextPin;
               if (nextPin) {
                 clearTimer();
+              } else if (!isHoveredRef.current) {
+                void expandWithTimer(5000);
               }
             }}
             title={pinned ? "Открепить авто-сворачивание" : "Закрепить виджет открытым"}

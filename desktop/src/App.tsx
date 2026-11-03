@@ -107,6 +107,7 @@ export default function App() {
   const settingsOpen = useStore((state) => state.settingsOpen);
   const queueOpen = useStore((state) => state.queueOpen);
   const isOverlay = useStore((state) => state.isOverlay);
+  const overlayTransition = useStore((state) => state.overlayTransition);
   const init = useStore((state) => state.init);
   const refreshLibrary = useStore((state) => state.refreshLibrary);
   const next = useStore((state) => state.next);
@@ -186,8 +187,10 @@ export default function App() {
     );
   }
 
+  const isCollapsingToWidget = overlayTransition === "collapsing_to_widget";
+
   return (
-    <div className={`app ${queueOpen ? "queue-is-open" : ""}`}>
+    <div className={`app ${queueOpen ? "queue-is-open" : ""} ${isCollapsingToWidget ? "collapsing-to-widget" : ""}`}>
       <Sidebar />
       <div className="workspace">
         <TopBar />

@@ -512,11 +512,13 @@ pub fn sync_to_config_json(state: &AppState) {
         .unwrap_or(false);
     let overlay_x = state
         .db
-        .get_setting("overlay_pos_x")
+        .get_setting("circle_pos_x")
+        .or_else(|| state.db.get_setting("overlay_pos_x"))
         .and_then(|v| v.parse::<i32>().ok());
     let overlay_y = state
         .db
-        .get_setting("overlay_pos_y")
+        .get_setting("circle_pos_y")
+        .or_else(|| state.db.get_setting("overlay_pos_y"))
         .and_then(|v| v.parse::<i32>().ok());
 
     let config = serde_json::json!({
@@ -682,30 +684,92 @@ pub async fn set_overlay_mode(
         let _ = window.set_decorations(false);
         let _ = window.set_shadow(false);
         let _ = window.set_always_on_top(true);
-        let _ = window.set_resizable(false);
-        let _ = window.set_size(tauri::LogicalSize::new(390.0, 185.0));
+        let _ = window.set_resizable(true);
 
-        let saved_x = state
+        let monitor = window.current_monitor().ok().flatten();
+        let scale = monitor.as_ref().map(|m| m.scale_factor()).unwrap_or(1.0);
+        let mon_pos = monitor
+            .as_ref()
+            .map(|m| m.position().clone())
+            .unwrap_or(tauri::PhysicalPosition::new(0, 0));
+        let mon_size = monitor
+            .as_ref()
+            .map(|m| m.size().clone())
+            .unwrap_or(tauri::PhysicalSize::new(1920, 1080));
+
+        let margin = (24.0 * scale).round() as i32;
+        let bottom_margin = (48.0 * scale).round() as i32;
+
+        let card_w = (390.0 * scale).round() as i32;
+        let card_h = (185.0 * scale).round() as i32;
+        let circle_w = (120.0 * scale).round() as i32;
+        let circle_h = (120.0 * scale).round() as i32;
+
+        // Default position for the very first collapse: TOP-LEFT of the screen
+        let default_pos = default_overlay_pos(&window);
+        let default_card_x = default_pos.x;
+        let default_card_y = default_pos.y;
+
+        let saved_card_x = state
             .db
             .get_setting("overlay_pos_x")
-            .and_then(|v| v.parse::<i32>().ok());
-        let saved_y = state
+            .and_then(|v| v.parse::<i32>().ok())
+            .filter(|&v| v > -10000);
+        let saved_card_y = state
             .db
             .get_setting("overlay_pos_y")
-            .and_then(|v| v.parse::<i32>().ok());
-        if let (Some(x), Some(y)) = (saved_x, saved_y) {
-            if x > -10000 && y > -10000 {
-                let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
-            }
-        }
+            .and_then(|v| v.parse::<i32>().ok())
+            .filter(|&v| v > -10000);
 
+        let (target_card_x, target_card_y) = match (saved_card_x, saved_card_y) {
+            (Some(x), Some(y)) => (x, y),
+            _ => {
+                let saved_cx = state
+                    .db
+                    .get_setting("circle_pos_x")
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .filter(|&v| v > -10000);
+                let saved_cy = state
+                    .db
+                    .get_setting("circle_pos_y")
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .filter(|&v| v > -10000);
+                match (saved_cx, saved_cy) {
+                    (Some(cx), Some(cy)) => {
+                        (cx - (card_w - circle_w) / 2, cy - (card_h - circle_h) / 2)
+                    }
+                    _ => (default_card_x, default_card_y),
+                }
+            }
+        };
+
+        let min_x = mon_pos.x + margin;
+        let max_x = (mon_pos.x + mon_size.width as i32 - card_w - margin).max(min_x);
+        let min_y = mon_pos.y + margin;
+        let max_y = (mon_pos.y + mon_size.height as i32 - card_h - bottom_margin).max(min_y);
+
+        let final_card_x = target_card_x.clamp(min_x, max_x);
+        let final_card_y = target_card_y.clamp(min_y, max_y);
+
+        let circle_x = final_card_x + (card_w - circle_w) / 2;
+        let circle_y = final_card_y + (card_h - circle_h) / 2;
+
+        // Opens FIRST as the big widget (390x185)
+        let _ = window.set_size(tauri::LogicalSize::new(390.0, 185.0));
+        let _ = window.set_position(tauri::PhysicalPosition::new(final_card_x, final_card_y));
+
+        let _ = state.db.set_setting("overlay_pos_x", &final_card_x.to_string());
+        let _ = state.db.set_setting("overlay_pos_y", &final_card_y.to_string());
+        let _ = state.db.set_setting("circle_pos_x", &circle_x.to_string());
+        let _ = state.db.set_setting("circle_pos_y", &circle_y.to_string());
+        let _ = state.db.set_setting("overlay_compact", "false");
         let _ = state.db.set_setting("is_overlay", "true");
         sync_to_config_json(state.inner());
 
         Ok(OverlayState {
             is_overlay: true,
-            x: saved_x,
-            y: saved_y,
+            x: Some(final_card_x),
+            y: Some(final_card_y),
         })
     } else {
         if let Ok(pos) = window.outer_position() {
@@ -742,6 +806,17 @@ pub async fn set_overlay_mode(
     }
 }
 
+fn default_overlay_pos(window: &tauri::WebviewWindow) -> tauri::PhysicalPosition<i32> {
+    if let Ok(Some(mon)) = window.current_monitor() {
+        let scale = mon.scale_factor();
+        let mon_pos = mon.position();
+        let margin = (24.0 * scale).round() as i32;
+        tauri::PhysicalPosition::new(mon_pos.x + margin, mon_pos.y + margin)
+    } else {
+        tauri::PhysicalPosition::new(24, 24)
+    }
+}
+
 #[tauri::command]
 pub fn save_overlay_position(state: State<'_, AppState>, x: i32, y: i32) -> Result<(), String> {
     if x <= -10000 || y <= -10000 {
@@ -772,66 +847,284 @@ pub async fn set_overlay_compact(
     if window.is_minimized().unwrap_or(false) {
         return Ok(());
     }
+
+    let _ = window.set_resizable(true);
     let _ = window.set_shadow(false);
+
+    let monitor = window.current_monitor().ok().flatten();
+    let scale = monitor.as_ref().map(|m| m.scale_factor()).unwrap_or(1.0);
+    let mon_pos = monitor
+        .as_ref()
+        .map(|m| m.position().clone())
+        .unwrap_or(tauri::PhysicalPosition::new(0, 0));
+    let mon_size = monitor
+        .as_ref()
+        .map(|m| m.size().clone())
+        .unwrap_or(tauri::PhysicalSize::new(1920, 1080));
+
+    let margin = (12.0 * scale).round() as i32;
+    let bottom_margin = (48.0 * scale).round() as i32;
+
+    let circle_w = (120.0 * scale).round() as i32;
+    let circle_h = (120.0 * scale).round() as i32;
+    let card_w = (390.0 * scale).round() as i32;
+    let card_h = (185.0 * scale).round() as i32;
+
+    let cur_pos = window
+        .outer_position()
+        .unwrap_or(tauri::PhysicalPosition::new(100, 100));
+
     if compact {
-        if let (Ok(pos), Ok(Some(monitor))) = (window.outer_position(), window.current_monitor()) {
-            if pos.x > -10000 && pos.y > -10000 {
-                let scale = monitor.scale_factor();
-                let screen_w = monitor.size().width as i32;
-                let screen_h = monitor.size().height as i32;
-                let target_w = (120.0 * scale) as i32;
-                let target_h = (120.0 * scale) as i32;
-                let margin = (4.0 * scale) as i32;
+        // COLLAPSING TO CIRCLE:
+        // Position circle in the exact visual center of the current card!
+        state.db.set_setting("overlay_compact", "true")?;
 
-                let clamped_x = pos.x.clamp(margin, (screen_w - target_w - margin).max(margin));
-                let clamped_y = pos.y.clamp(margin, (screen_h - target_h - margin - (35.0 * scale) as i32).max(margin));
+        let target_x = cur_pos.x + (card_w - circle_w) / 2;
+        let target_y = cur_pos.y + (card_h - circle_h) / 2;
 
-                if clamped_x != pos.x || clamped_y != pos.y {
-                    let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
-                }
-            }
-        }
+        let min_x = mon_pos.x + margin;
+        let max_x = (mon_pos.x + mon_size.width as i32 - circle_w - margin).max(min_x);
+        let min_y = mon_pos.y + margin;
+        let max_y = (mon_pos.y + mon_size.height as i32 - circle_h - bottom_margin).max(min_y);
+
+        let clamped_x = target_x.clamp(min_x, max_x);
+        let clamped_y = target_y.clamp(min_y, max_y);
+
+        let _ = state.db.set_setting("circle_pos_x", &clamped_x.to_string());
+        let _ = state.db.set_setting("circle_pos_y", &clamped_y.to_string());
+
+        let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
         let _ = window.set_size(tauri::LogicalSize::new(120.0, 120.0));
     } else {
-        if let (Ok(pos), Ok(Some(monitor))) = (window.outer_position(), window.current_monitor()) {
-            if pos.x > -10000 && pos.y > -10000 {
-                let scale = monitor.scale_factor();
-                let screen_w = monitor.size().width as i32;
-                let screen_h = monitor.size().height as i32;
-                let target_w = (390.0 * scale) as i32;
-                let target_h = (185.0 * scale) as i32;
-                let margin = (8.0 * scale) as i32;
-
-                let clamped_x = pos.x.clamp(margin, (screen_w - target_w - margin).max(margin));
-                let clamped_y = pos.y.clamp(margin, (screen_h - target_h - margin - (35.0 * scale) as i32).max(margin));
-
-                if clamped_x != pos.x || clamped_y != pos.y {
-                    let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
-                }
-            }
+        // EXPANDING TO CARD:
+        // Current position IS the circle position! Save it so we can return to it later!
+        if cur_pos.x > -10000 && cur_pos.y > -10000 {
+            let _ = state.db.set_setting("circle_pos_x", &cur_pos.x.to_string());
+            let _ = state.db.set_setting("circle_pos_y", &cur_pos.y.to_string());
         }
+        state.db.set_setting("overlay_compact", "false")?;
+
+        // Center expanded card on the circle
+        let center_x = cur_pos.x + circle_w / 2;
+        let center_y = cur_pos.y + circle_h / 2;
+
+        let desired_card_x = center_x - card_w / 2;
+        let desired_card_y = center_y - card_h / 2;
+
+        let min_x = mon_pos.x + margin;
+        let max_x = mon_pos.x + (mon_size.width as i32 - card_w - margin).max(0);
+        let min_y = mon_pos.y + margin;
+        let max_y = mon_pos.y + (mon_size.height as i32 - card_h - bottom_margin).max(0);
+
+        let clamped_x = desired_card_x.clamp(min_x, max_x);
+        let clamped_y = desired_card_y.clamp(min_y, max_y);
+
+        let _ = state.db.set_setting("overlay_pos_x", &clamped_x.to_string());
+        let _ = state.db.set_setting("overlay_pos_y", &clamped_y.to_string());
+
+        // Resize FIRST so window has full bounds for content, then move
         let _ = window.set_size(tauri::LogicalSize::new(390.0, 185.0));
+        let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
     }
+
+    sync_to_config_json(state.inner());
     Ok(())
 }
 
-#[tauri::command]
-pub fn start_window_drag(window: tauri::WebviewWindow) -> Result<bool, String> {
-    let start_pos = window.outer_position().ok();
-    let drag_res = window.start_dragging();
-    let end_pos = window.outer_position().ok();
-
-    if drag_res.is_err() {
-        return Ok(false);
+#[cfg(target_os = "windows")]
+mod win32_drag {
+    #[repr(C)]
+    #[derive(Copy, Clone, Default)]
+    pub struct POINT {
+        pub x: i32,
+        pub y: i32,
     }
 
-    if let (Some(s), Some(e)) = (start_pos, end_pos) {
-        let dx = (s.x - e.x).abs();
-        let dy = (s.y - e.y).abs();
-        Ok(dx > 3 || dy > 3)
-    } else {
+    #[repr(C)]
+    #[derive(Copy, Clone, Default)]
+    pub struct RECT {
+        pub left: i32,
+        pub top: i32,
+        pub right: i32,
+        pub bottom: i32,
+    }
+
+    #[repr(C)]
+    pub struct MONITORINFO {
+        pub cb_size: u32,
+        pub rc_monitor: RECT,
+        pub rc_work: RECT,
+        pub dw_flags: u32,
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn GetCursorPos(lpPoint: *mut POINT) -> i32;
+        pub fn GetAsyncKeyState(vKey: i32) -> i16;
+        pub fn ClipCursor(lpRect: *const RECT) -> i32;
+        pub fn MonitorFromPoint(pt: POINT, dwFlags: u32) -> *mut std::ffi::c_void;
+        pub fn GetMonitorInfoW(hMonitor: *mut std::ffi::c_void, lpmi: *mut MONITORINFO) -> i32;
+    }
+
+    pub struct ClipCursorGuard;
+    impl Drop for ClipCursorGuard {
+        fn drop(&mut self) {
+            unsafe {
+                ClipCursor(std::ptr::null());
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn start_clamped_drag(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use win32_drag::*;
+
+        // Check if left mouse button is still pressed
+        unsafe {
+            if (GetAsyncKeyState(0x01 /* VK_LBUTTON */) as u16 & 0x8000) == 0 {
+                return Ok(false);
+            }
+        }
+
+        let mut cursor = POINT::default();
+        unsafe {
+            GetCursorPos(&mut cursor);
+        }
+
+        let win_pos = match window.outer_position() {
+            Ok(p) => p,
+            Err(_) => return Ok(false),
+        };
+        let win_size = match window.outer_size() {
+            Ok(s) => s,
+            Err(_) => return Ok(false),
+        };
+
+        let grab_offset_x = cursor.x - win_pos.x;
+        let grab_offset_y = cursor.y - win_pos.y;
+
+        let mut mi = MONITORINFO {
+            cb_size: std::mem::size_of::<MONITORINFO>() as u32,
+            rc_monitor: RECT::default(),
+            rc_work: RECT::default(),
+            dw_flags: 0,
+        };
+        unsafe {
+            let h_mon = MonitorFromPoint(cursor, 2 /* MONITOR_DEFAULTTONEAREST */);
+            GetMonitorInfoW(h_mon, &mut mi);
+        }
+
+        let work_left = mi.rc_work.left;
+        let work_top = mi.rc_work.top;
+        let work_right = mi.rc_work.right;
+        let work_bottom = mi.rc_work.bottom;
+
+        let win_w = win_size.width as i32;
+        let win_h = win_size.height as i32;
+
+        let min_win_x = work_left;
+        let max_win_x = (work_right - win_w).max(min_win_x);
+        let min_win_y = work_top;
+        let max_win_y = (work_bottom - win_h).max(min_win_y);
+
+        // Clip cursor so the user physically cannot push the widget past screen edges,
+        // and cursor never drifts off the widget.
+        let clip_rect = RECT {
+            left: min_win_x + grab_offset_x,
+            top: min_win_y + grab_offset_y,
+            right: max_win_x + grab_offset_x + 1,
+            bottom: max_win_y + grab_offset_y + 1,
+        };
+
+        let _guard = ClipCursorGuard;
+        unsafe {
+            ClipCursor(&clip_rect);
+        }
+
+        let mut last_win_x = win_pos.x;
+        let mut last_win_y = win_pos.y;
+
+        while unsafe { (GetAsyncKeyState(0x01) as u16 & 0x8000) != 0 } {
+            if !window.is_visible().unwrap_or(true) || window.is_minimized().unwrap_or(false) {
+                break;
+            }
+
+            unsafe {
+                GetCursorPos(&mut cursor);
+            }
+
+            let target_win_x = (cursor.x - grab_offset_x).clamp(min_win_x, max_win_x);
+            let target_win_y = (cursor.y - grab_offset_y).clamp(min_win_y, max_win_y);
+
+            if target_win_x != last_win_x || target_win_y != last_win_y {
+                let _ = window.set_position(tauri::PhysicalPosition::new(target_win_x, target_win_y));
+                last_win_x = target_win_x;
+                last_win_y = target_win_y;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(4)).await;
+        }
+
+        // _guard is dropped here, calling ClipCursor(NULL) automatically
+
+        let is_compact = state
+            .db
+            .get_setting("overlay_compact")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+
+        let scale = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .map(|m| m.scale_factor())
+            .unwrap_or(1.0);
+
+        if is_compact {
+            let _ = state.db.set_setting("circle_pos_x", &last_win_x.to_string());
+            let _ = state.db.set_setting("circle_pos_y", &last_win_y.to_string());
+            // Synchronize card center to match this circle position
+            let target_card_w = (390.0 * scale).round() as i32;
+            let target_card_h = (185.0 * scale).round() as i32;
+            let cx = last_win_x + win_w / 2 - target_card_w / 2;
+            let cy = last_win_y + win_h / 2 - target_card_h / 2;
+            let _ = state.db.set_setting("overlay_pos_x", &cx.to_string());
+            let _ = state.db.set_setting("overlay_pos_y", &cy.to_string());
+        } else {
+            let _ = state.db.set_setting("overlay_pos_x", &last_win_x.to_string());
+            let _ = state.db.set_setting("overlay_pos_y", &last_win_y.to_string());
+            // Synchronize circle center to match this card position
+            let target_circle_w = (120.0 * scale).round() as i32;
+            let target_circle_h = (120.0 * scale).round() as i32;
+            let cx = last_win_x + win_w / 2 - target_circle_w / 2;
+            let cy = last_win_y + win_h / 2 - target_circle_h / 2;
+            let _ = state.db.set_setting("circle_pos_x", &cx.to_string());
+            let _ = state.db.set_setting("circle_pos_y", &cy.to_string());
+        }
+        sync_to_config_json(state.inner());
+
         Ok(true)
     }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window.start_dragging();
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+pub async fn start_window_drag(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    start_clamped_drag(window, state).await
 }
 
 #[tauri::command]

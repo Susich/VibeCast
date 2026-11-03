@@ -25,6 +25,7 @@ export function bindEvents(): void {
   void listen<RemoteCommand>("remote-control", async (cmd) => {
     if (!cmd?.action) return;
     const store = useStore.getState();
+    window.dispatchEvent(new CustomEvent("vibecast-hotkey", { detail: { action: cmd.action } }));
     switch (cmd.action) {
       case "toggle":
         await store.toggle();

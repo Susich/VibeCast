@@ -14,9 +14,9 @@
   "overlay": {
     "alwaysOnTop": true,
     "height": 140,
-    "isOverlay": true,
-    "lastX": 24,
-    "lastY": 10,
+    "isOverlay": false,
+    "lastX": 15,
+    "lastY": 15,
     "width": 380
   },
   "theme": "amethyst",

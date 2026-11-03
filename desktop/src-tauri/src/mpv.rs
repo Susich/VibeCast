@@ -190,6 +190,7 @@ impl PlayerHandle {
         if start > 0.01 {
             options.insert("start".to_string(), json!(format!("{start:.3}")));
         }
+        options.insert("pause".to_string(), json!("no"));
 
         let command = if options.is_empty() {
             json!({
@@ -204,12 +205,22 @@ impl PlayerHandle {
         };
         self.send(command).await?;
 
+        // Explicitly unpause mpv to guarantee playback starts on first try after phone connection
+        let _ = self
+            .send(json!({
+                "command": ["set_property", "pause", false],
+                "request_id": self.request_id.fetch_add(1, Ordering::Relaxed),
+            }))
+            .await;
+
         self.emit_state(true);
         Ok(())
     }
 
     pub async fn stop(&self) {
         self.send_optional(json!({ "command": ["stop"] })).await;
+        self.send_optional(json!({ "command": ["set_property", "pause", false] }))
+            .await;
         if let Ok(mut state) = self.state.lock() {
             let volume = state.volume;
             *state = PlayerState {
@@ -333,6 +344,7 @@ impl PlayerHandle {
         let mut command = Command::new(&mpv);
         command.args([
             "--idle=yes",
+            "--pause=no",
             "--no-video",
             "--gapless-audio=yes",
             "--audio-buffer=0.3",

@@ -66,6 +66,7 @@ interface Store {
 
   theme: string;
   isOverlay: boolean;
+  overlayTransition: "none" | "collapsing_to_widget" | "expanding_to_full";
   isRecordingHotkey: boolean;
 
   init: () => Promise<void>;
@@ -187,6 +188,7 @@ export const useStore = create<Store>()((set, get) => ({
   toasts: [],
   theme: "cyberpunk",
   isOverlay: false,
+  overlayTransition: "none",
   isRecordingHotkey: false,
 
   setRecordingHotkey(recording: boolean) {
@@ -246,14 +248,31 @@ export const useStore = create<Store>()((set, get) => ({
   },
 
   async toggleOverlay(enable?: boolean) {
+    if (get().overlayTransition !== "none") return;
     const target = typeof enable === "boolean" ? enable : !get().isOverlay;
-    set({ isOverlay: target });
-    try {
-      const res = await call<OverlayState>("set_overlay_mode", { enabled: target });
-      set({ isOverlay: res.isOverlay });
-    } catch (err) {
-      get().addToast(`Ошибка переключения оверлея: ${errorText(err)}`, "error");
-      set({ isOverlay: !target });
+
+    if (target) {
+      // Transitioning: Full App -> Widget
+      set({ overlayTransition: "collapsing_to_widget" });
+      await new Promise((r) => setTimeout(r, 220));
+      try {
+        const res = await call<OverlayState>("set_overlay_mode", { enabled: true });
+        set({ isOverlay: res.isOverlay, overlayTransition: "none" });
+      } catch (err) {
+        get().addToast(`Ошибка переключения оверлея: ${errorText(err)}`, "error");
+        set({ overlayTransition: "none" });
+      }
+    } else {
+      // Transitioning: Widget -> Full App
+      set({ overlayTransition: "expanding_to_full" });
+      await new Promise((r) => setTimeout(r, 220));
+      try {
+        const res = await call<OverlayState>("set_overlay_mode", { enabled: false });
+        set({ isOverlay: res.isOverlay, overlayTransition: "none" });
+      } catch (err) {
+        get().addToast(`Ошибка переключения оверлея: ${errorText(err)}`, "error");
+        set({ overlayTransition: "none" });
+      }
     }
   },
 

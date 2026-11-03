@@ -116,8 +116,19 @@ import com.vibecast.app.data.TrackSort
 import com.vibecast.app.data.UpdateManager
 import com.vibecast.app.service.ServerRuntime
 import com.vibecast.app.service.ServerService
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import com.vibecast.app.ui.theme.VibeAmber
 import com.vibecast.app.ui.theme.VibeBg
+import com.vibecast.app.ui.theme.VibeBgGradientBottom
+import com.vibecast.app.ui.theme.VibeBgGradientTop
+import com.vibecast.app.ui.theme.VibeCyan
 import com.vibecast.app.ui.theme.VibeGreen
 import com.vibecast.app.ui.theme.VibeMuted
 import com.vibecast.app.ui.theme.VibeRed
@@ -134,6 +145,87 @@ private enum class NavTab(val title: String, val icon: ImageVector) {
     PLAYER("Пульт", Icons.Rounded.Headphones),
     SERVER("Сервер", Icons.Rounded.Sensors),
     SHARE("Поделиться", Icons.Rounded.Share),
+}
+
+@Composable
+private fun MiniEqualizerWave(
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    barColor: Color = VibeGreen,
+) {
+    if (!isPlaying) {
+        Row(
+            modifier = modifier.height(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Box(Modifier.width(2.5.dp).height(4.dp).clip(RoundedCornerShape(1.dp)).background(barColor.copy(alpha = 0.4f)))
+            Box(Modifier.width(2.5.dp).height(7.dp).clip(RoundedCornerShape(1.dp)).background(barColor.copy(alpha = 0.4f)))
+            Box(Modifier.width(2.5.dp).height(3.dp).clip(RoundedCornerShape(1.dp)).background(barColor.copy(alpha = 0.4f)))
+        }
+        return
+    }
+
+    val transition = rememberInfiniteTransition(label = "eqWave")
+    val h1 by transition.animateFloat(
+        initialValue = 4f,
+        targetValue = 13f,
+        animationSpec = infiniteRepeatable(tween(360, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "h1",
+    )
+    val h2 by transition.animateFloat(
+        initialValue = 14f,
+        targetValue = 5f,
+        animationSpec = infiniteRepeatable(tween(440, easing = LinearEasing), RepeatMode.Reverse),
+        label = "h2",
+    )
+    val h3 by transition.animateFloat(
+        initialValue = 5f,
+        targetValue = 15f,
+        animationSpec = infiniteRepeatable(tween(310, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "h3",
+    )
+
+    Row(
+        modifier = modifier.height(15.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Box(Modifier.width(2.5.dp).height(h1.dp).clip(RoundedCornerShape(1.dp)).background(barColor))
+        Box(Modifier.width(2.5.dp).height(h2.dp).clip(RoundedCornerShape(1.dp)).background(barColor))
+        Box(Modifier.width(2.5.dp).height(h3.dp).clip(RoundedCornerShape(1.dp)).background(barColor))
+    }
+}
+
+@Composable
+private fun ServerLivePulse(isActive: Boolean) {
+    if (!isActive) {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(VibeMuted))
+        return
+    }
+    val transition = rememberInfiniteTransition(label = "pulse")
+    val scale by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.7f,
+        animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "scale",
+    )
+    val alpha by transition.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 0.05f,
+        animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "alpha",
+    )
+
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(18.dp)) {
+        Box(
+            Modifier
+                .size((11 * scale).dp)
+                .clip(CircleShape)
+                .background(VibeGreen.copy(alpha = alpha)),
+        )
+        Box(Modifier.size(9.dp).clip(CircleShape).background(VibeGreen))
+    }
 }
 
 @Composable
@@ -166,13 +258,20 @@ fun VibeCastRoot() {
             )
         } else {
             Scaffold(
-                containerColor = VibeBg,
+                containerColor = Color.Transparent,
                 bottomBar = {
                     VibeBottomNav(
                         currentTab = selectedTab,
                         onTabSelected = { selectedTab = it },
                     )
                 },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(VibeBgGradientTop, VibeBg, VibeBgGradientBottom)
+                        )
+                    ),
             ) { padding ->
                 Box(
                     modifier = Modifier
@@ -204,36 +303,44 @@ private fun VibeBottomNav(
     currentTab: NavTab,
     onTabSelected: (NavTab) -> Unit,
 ) {
-    NavigationBar(
-        containerColor = VibeSurface,
-        contentColor = VibeText,
+    Surface(
+        color = Color(0xF20E1520),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
         tonalElevation = 8.dp,
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        NavTab.values().forEach { tab ->
-            val isSelected = currentTab == tab
-            NavigationBarItem(
-                selected = isSelected,
-                onClick = { onTabSelected(tab) },
-                icon = {
-                    Icon(
-                        imageVector = tab.icon,
-                        contentDescription = tab.title,
-                        modifier = Modifier.size(22.dp),
-                        tint = if (isSelected) VibeGreen else VibeMuted,
-                    )
-                },
-                label = {
-                    Text(
-                        tab.title,
-                        color = if (isSelected) VibeGreen else VibeMuted,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        fontSize = 12.sp,
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = Color(0xFF162E22),
-                ),
-            )
+        NavigationBar(
+            containerColor = Color.Transparent,
+            tonalElevation = 0.dp,
+            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
+        ) {
+            NavTab.values().forEach { tab ->
+                val isSelected = currentTab == tab
+                NavigationBarItem(
+                    selected = isSelected,
+                    onClick = { onTabSelected(tab) },
+                    icon = {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.title,
+                            modifier = Modifier.size(22.dp),
+                            tint = if (isSelected) VibeGreen else VibeMuted,
+                        )
+                    },
+                    label = {
+                        Text(
+                            tab.title,
+                            color = if (isSelected) VibeGreen else VibeMuted,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 12.sp,
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        indicatorColor = Color(0x284ADE80),
+                    ),
+                )
+            }
         }
     }
 }
@@ -289,9 +396,10 @@ private fun RemotePlayerScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Brush.linearGradient(listOf(VibeGreen, VibeCyan)))
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -302,13 +410,30 @@ private fun RemotePlayerScreen(
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                Column {
-                    Text(
-                        "Пульт управления ПК",
-                        color = VibeText,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Пульт VibeCast",
+                            color = VibeText,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        val isPcActive = playerState?.currentTrackId != null
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isPcActive) Color(0x284ADE80) else Color(0x1F94A3B8))
+                                .padding(horizontal = 7.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                if (isPcActive) "ПК на связи" else "Ожидание",
+                                color = if (isPcActive) VibeGreen else VibeMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                     Text(
                         "Воспроизведение музыки на компьютере по Wi-Fi",
                         color = VibeMuted,
@@ -719,23 +844,39 @@ private fun NowPlayingCard(
         loadCoverBitmap(coverStore, player?.currentTrackId)
     }
 
+    val isPlaying = player?.currentTrackId != null && !player.paused
+
     Card(
         colors = CardDefaults.cardColors(containerColor = VibeSurface),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFF223040), RoundedCornerShape(22.dp)),
+            .border(
+                BorderStroke(
+                    1.dp,
+                    if (isPlaying) Brush.linearGradient(listOf(Color(0x554ADE80), Color(0x2222D3EE), Color(0x11FFFFFF)))
+                    else Brush.linearGradient(listOf(Color(0xFF223143), Color(0xFF162230))),
+                ),
+                RoundedCornerShape(24.dp),
+            ),
     ) {
         Column(Modifier.padding(18.dp)) {
             if (player?.currentTrackId != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Cover Art
+                    // Cover Art with neon rim when playing
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .size(76.dp)
+                            .clip(RoundedCornerShape(16.dp))
                             .background(VibeSurfaceHigh)
-                            .border(1.dp, Color(0xFF223040), RoundedCornerShape(14.dp)),
+                            .border(
+                                BorderStroke(
+                                    1.5.dp,
+                                    if (isPlaying) Brush.linearGradient(listOf(VibeGreen, VibeCyan))
+                                    else Brush.linearGradient(listOf(Color(0xFF223143), Color(0xFF1A2636))),
+                                ),
+                                RoundedCornerShape(16.dp),
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (coverBitmap != null) {
@@ -748,7 +889,7 @@ private fun NowPlayingCard(
                             Icon(
                                 imageVector = Icons.Rounded.MusicNote,
                                 contentDescription = "Музыка",
-                                tint = VibeMuted,
+                                tint = if (isPlaying) VibeGreen else VibeMuted,
                                 modifier = Modifier.size(34.dp),
                             )
                         }
@@ -760,7 +901,7 @@ private fun NowPlayingCard(
                         Text(
                             player.title?.takeIf { it.isNotBlank() } ?: "Без названия",
                             color = VibeText,
-                            fontSize = 16.sp,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -781,30 +922,36 @@ private fun NowPlayingCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
+                            // Status Pill Badge with animated equalizer wave
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (!player.paused) VibeGreen.copy(alpha = 0.16f) else VibeAmber.copy(alpha = 0.16f))
-                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isPlaying) Color(0x284ADE80) else Color(0x24FBBF24))
+                                    .border(1.dp, if (isPlaying) VibeGreen.copy(alpha = 0.45f) else VibeAmber.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp),
                             ) {
+                                MiniEqualizerWave(isPlaying = isPlaying, barColor = if (isPlaying) VibeGreen else VibeAmber)
+                                Spacer(Modifier.width(6.dp))
                                 Text(
-                                    if (!player.paused) "Играет на ПК" else "Пауза",
-                                    color = if (!player.paused) VibeGreen else VibeAmber,
+                                    if (isPlaying) "Играет на ПК" else "Пауза",
+                                    color = if (isPlaying) VibeGreen else VibeAmber,
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontWeight = FontWeight.SemiBold,
                                 )
                             }
                             if (player.source == "cache") {
                                 Spacer(Modifier.width(6.dp))
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF38BDF8).copy(alpha = 0.16f))
-                                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0x2838BDF8))
+                                        .border(1.dp, Color(0x4038BDF8), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp),
                                 ) {
-                                    Text("Кэш", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    Text("Кэш", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -834,15 +981,15 @@ private fun NowPlayingCard(
                         colors = SliderDefaults.colors(
                             thumbColor = VibeGreen,
                             activeTrackColor = VibeGreen,
-                            inactiveTrackColor = Color(0xFF223040),
+                            inactiveTrackColor = Color(0xFF1E2A38),
                         ),
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text(formatTime(currentPos.toDouble()), color = VibeMuted, fontSize = 11.sp)
-                        Text(formatTime(duration.toDouble()), color = VibeMuted, fontSize = 11.sp)
+                        Text(formatTime(currentPos.toDouble()), color = VibeMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Text(formatTime(duration.toDouble()), color = VibeMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 }
 
@@ -857,23 +1004,25 @@ private fun NowPlayingCard(
                     IconButton(
                         onClick = onPrev,
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(50.dp)
                             .clip(CircleShape)
-                            .background(VibeSurfaceHigh),
+                            .background(VibeSurfaceHigh)
+                            .border(1.dp, Color(0x22FFFFFF), CircleShape),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.SkipPrevious,
                             contentDescription = "Предыдущий",
                             tint = VibeText,
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(26.dp),
                         )
                     }
 
                     Box(
                         modifier = Modifier
-                            .size(62.dp)
+                            .size(66.dp)
                             .clip(CircleShape)
-                            .background(VibeGreen)
+                            .background(Brush.linearGradient(listOf(VibeGreen, VibeCyan)))
+                            .border(1.5.dp, Color(0x44FFFFFF), CircleShape)
                             .clickable {
                                 ServerRuntime.sendCommand(RemoteCommandDto(action = "toggle"))
                             },
@@ -883,40 +1032,50 @@ private fun NowPlayingCard(
                             imageVector = if (player.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
                             contentDescription = if (player.paused) "Воспроизведение" else "Пауза",
                             tint = Color(0xFF06210F),
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(34.dp),
                         )
                     }
 
                     IconButton(
                         onClick = onNext,
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(50.dp)
                             .clip(CircleShape)
-                            .background(VibeSurfaceHigh),
+                            .background(VibeSurfaceHigh)
+                            .border(1.dp, Color(0x22FFFFFF), CircleShape),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.SkipNext,
                             contentDescription = "Следующий",
                             tint = VibeText,
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(26.dp),
                         )
                     }
                 }
 
                 Spacer(Modifier.height(14.dp))
-                HorizontalDivider(color = Color(0xFF223040))
+                HorizontalDivider(color = Color(0xFF223143))
                 Spacer(Modifier.height(12.dp))
 
                 // Volume Slider (Vector Icons, NO EMOJIS)
                 var volumeValue by remember(player.volume) { mutableFloatStateOf(player.volume.toFloat()) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (volumeValue <= 0) Icons.AutoMirrored.Rounded.VolumeMute else Icons.AutoMirrored.Rounded.VolumeUp,
-                        contentDescription = "Громкость",
-                        tint = VibeMuted,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
+                    IconButton(
+                        onClick = {
+                            val newVol = if (volumeValue > 0) 0.0 else 80.0
+                            volumeValue = newVol.toFloat()
+                            ServerRuntime.sendCommand(RemoteCommandDto(action = "volume", volume = newVol))
+                        },
+                        modifier = Modifier.size(34.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (volumeValue <= 0) Icons.AutoMirrored.Rounded.VolumeMute else Icons.AutoMirrored.Rounded.VolumeUp,
+                            contentDescription = "Громкость",
+                            tint = if (volumeValue <= 0) VibeRed else VibeMuted,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
                     Slider(
                         value = volumeValue.coerceIn(0f, 100f),
                         onValueChange = {
@@ -928,49 +1087,57 @@ private fun NowPlayingCard(
                         colors = SliderDefaults.colors(
                             thumbColor = VibeGreen,
                             activeTrackColor = VibeGreen,
-                            inactiveTrackColor = Color(0xFF223040),
+                            inactiveTrackColor = Color(0xFF1E2A38),
                         ),
                     )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "${volumeValue.toInt()}%",
-                        color = VibeMuted,
-                        fontSize = 12.sp,
-                        modifier = Modifier.width(36.dp),
-                    )
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        color = VibeSurfaceHigh,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFF223143)),
+                    ) {
+                        Text(
+                            "${volumeValue.toInt()}%",
+                            color = VibeText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                        )
+                    }
                 }
             } else {
                 // Waiting / Empty State
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 14.dp),
+                        .padding(vertical = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(56.dp)
+                            .size(60.dp)
                             .clip(CircleShape)
-                            .background(VibeSurfaceHigh),
+                            .background(VibeSurfaceHigh)
+                            .border(1.dp, Color(0xFF223143), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Headphones,
                             contentDescription = null,
-                            tint = VibeMuted,
-                            modifier = Modifier.size(28.dp),
+                            tint = VibeGreen,
+                            modifier = Modifier.size(30.dp),
                         )
                     }
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "Компьютер в режиме ожидания",
                         color = VibeText,
-                        fontSize = 16.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Подключите ПК к телефону по Wi-Fi или выберите любой трек из списка ниже, чтобы включить его на ПК.",
+                        "Подключите ПК к телефону по Wi-Fi или нажмите на любой трек из списка ниже, чтобы запустить воспроизведение на ПК.",
                         color = VibeMuted,
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center,
@@ -980,6 +1147,7 @@ private fun NowPlayingCard(
                     OutlinedButton(
                         onClick = onNavigateToServer,
                         shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFF223143)),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Sensors,
@@ -988,7 +1156,7 @@ private fun NowPlayingCard(
                             modifier = Modifier.size(16.dp),
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text("Показать адрес сервера и токен", color = VibeGreen, fontSize = 13.sp)
+                        Text("Показать адрес сервера и токен", color = VibeGreen, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -1015,14 +1183,16 @@ private fun TrackItem(
         colors = CardDefaults.cardColors(
             containerColor = if (isPlaying) Color(0xFF14291F) else VibeSurface,
         ),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp)
+            .padding(vertical = 3.5.dp)
             .border(
-                1.dp,
-                if (isPlaying) VibeGreen.copy(alpha = 0.6f) else Color(0xFF1E2A38),
-                RoundedCornerShape(14.dp),
+                BorderStroke(
+                    1.dp,
+                    if (isPlaying) VibeGreen.copy(alpha = 0.7f) else Color(0xFF1C2735),
+                ),
+                RoundedCornerShape(16.dp),
             )
             .clickable(onClick = onClick),
     ) {
@@ -1032,17 +1202,26 @@ private fun TrackItem(
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isPlaying) VibeGreen.copy(alpha = 0.2f) else Color(0xFF1C2634)),
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isPlaying) Color(0x334ADE80) else Color(0xFF182331))
+                    .border(
+                        1.dp,
+                        if (isPlaying) VibeGreen.copy(alpha = 0.4f) else Color(0xFF223143),
+                        RoundedCornerShape(12.dp),
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Rounded.PlayArrow else Icons.Rounded.MusicNote,
-                    contentDescription = null,
-                    tint = if (isPlaying) VibeGreen else VibeMuted,
-                    modifier = Modifier.size(20.dp),
-                )
+                if (isPlaying) {
+                    MiniEqualizerWave(isPlaying = true, barColor = VibeGreen)
+                } else {
+                    Icon(
+                        imageVector = Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        tint = VibeMuted,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -1050,25 +1229,33 @@ private fun TrackItem(
                     track.title.ifBlank { "Без названия" },
                     color = if (isPlaying) VibeGreen else VibeText,
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
                     cleanArtist,
-                    color = VibeMuted,
+                    color = if (isPlaying) VibeGreen.copy(alpha = 0.8f) else VibeMuted,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                formatTime(track.durationMs / 1000.0),
-                color = VibeMuted,
-                fontSize = 12.sp,
-            )
+            Spacer(Modifier.width(10.dp))
+            Surface(
+                color = if (isPlaying) Color(0x304ADE80) else Color(0xFF182331),
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, if (isPlaying) VibeGreen.copy(alpha = 0.3f) else Color(0xFF223143)),
+            ) {
+                Text(
+                    formatTime(track.durationMs / 1000.0),
+                    color = if (isPlaying) VibeGreen else VibeMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+            }
         }
     }
 }
@@ -1778,102 +1965,192 @@ private fun StatusCard(state: ServerRuntime.State) {
         repo?.getSelectedFolders()?.size ?: 0
     }
 
-    val statusColor = when {
-        state.error != null -> VibeRed
-        state.running -> VibeGreen
-        state.starting || state.scanning -> VibeAmber
-        else -> VibeMuted
-    }
+    val isOnline = state.running
     val title = when {
         state.error != null -> "Сервер не запущен"
-        state.scanning -> "Сканирование библиотеки…"
+        state.scanning -> "Сканирование медиатеки…"
         state.starting -> "Запуск сервера…"
-        state.running -> "Сервер работает"
+        state.running -> "Сервер активен"
         else -> "Сервер остановлен"
     }
+
     Card(
         colors = CardDefaults.cardColors(containerColor = VibeSurface),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFF223040), RoundedCornerShape(22.dp)),
+            .border(
+                BorderStroke(
+                    1.dp,
+                    if (isOnline) Brush.linearGradient(listOf(Color(0x554ADE80), Color(0x2222D3EE), Color(0x11FFFFFF)))
+                    else Brush.linearGradient(listOf(Color(0xFF223143), Color(0xFF162230))),
+                ),
+                RoundedCornerShape(24.dp),
+            ),
     ) {
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(statusColor))
+                ServerLivePulse(isActive = state.running)
                 Spacer(Modifier.width(10.dp))
-                Text(title, color = VibeText, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Text(title, color = VibeText, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.weight(1f))
+                if (state.running) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x284ADE80))
+                            .border(1.dp, VibeGreen.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    ) {
+                        Text("ONLINE", color = VibeGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
-            Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Metric("Адрес", if (state.running && state.ip != null) "${state.ip}:${state.port}" else "—", Modifier.weight(1.3f))
-                Metric("Каталог", if (state.version > 0) "#${state.version}" else "—", Modifier.weight(0.7f))
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetricTile(
+                    label = "Адрес подключения",
+                    value = if (state.running && state.ip != null) "${state.ip}:${state.port}" else "—",
+                    icon = Icons.Rounded.Sensors,
+                    modifier = Modifier.weight(1f),
+                )
+                MetricTile(
+                    label = "Каталог",
+                    value = if (state.version > 0) "#${state.version}" else "—",
+                    icon = Icons.Rounded.Update,
+                    modifier = Modifier.weight(1f),
+                )
             }
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Metric("Треков", if (state.trackCount > 0) state.trackCount.toString() else "—", Modifier.weight(1.3f))
-                Metric("Папки", if (selectedFoldersCount > 0) "$selectedFoldersCount выбрано" else "Все", Modifier.weight(0.7f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetricTile(
+                    label = "Всего треков",
+                    value = if (state.trackCount > 0) "${state.trackCount}" else "0",
+                    icon = Icons.Rounded.MusicNote,
+                    modifier = Modifier.weight(1f),
+                )
+                MetricTile(
+                    label = "Выбранные папки",
+                    value = if (selectedFoldersCount > 0) "$selectedFoldersCount выбрано" else "Все папки",
+                    icon = Icons.Rounded.FolderOpen,
+                    modifier = Modifier.weight(1f),
+                )
             }
             if (state.token.isNotBlank()) {
                 Spacer(Modifier.height(18.dp))
-                TokenRow(state.token)
+                TokenCard(state.token)
             }
         }
     }
 }
 
 @Composable
-private fun Metric(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier) {
-        Text(label, color = VibeMuted, fontSize = 11.sp, maxLines = 1)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            value,
-            color = VibeText,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun TokenRow(token: String) {
-    var revealed by remember { mutableStateOf(false) }
-    val clipboard = LocalClipboardManager.current
-    Column {
-        Text("Bearer-токен", color = VibeMuted, fontSize = 11.sp)
-        Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = if (revealed) token else "•".repeat(18),
-                color = VibeText,
-                fontSize = 13.sp,
-                modifier = Modifier.weight(1f),
-            )
-            TextButtonText(if (revealed) "Скрыть" else "Показать") { revealed = !revealed }
-            Spacer(Modifier.width(8.dp))
-            TextButtonText("Копировать") {
-                clipboard.setText(AnnotatedString(token))
-            }
-        }
-    }
-}
-
-@Composable
-private fun TextButtonText(text: String, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = VibeSurfaceHigh,
-            contentColor = VibeGreen,
-        ),
-        shape = RoundedCornerShape(8.dp),
-        modifier = Modifier.height(32.dp),
+private fun MetricTile(
+    label: String,
+    value: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = VibeSurfaceHigh,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color(0xFF223143)),
+        modifier = modifier,
     ) {
-        Text(text, fontSize = 12.sp)
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = VibeMuted,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(label, color = VibeMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                value,
+                color = VibeText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TokenCard(token: String) {
+    var revealed by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2000)
+            copied = false
+        }
+    }
+
+    Surface(
+        color = VibeSurfaceHigh,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color(0xFF223143)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Bearer-токен авторизации", color = VibeMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.weight(1f))
+                if (copied) {
+                    Text("Скопировано!", color = VibeGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (revealed) token else "••••••••••••••••••••••••••",
+                    color = VibeText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { revealed = !revealed },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF223143)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp),
+                ) {
+                    Text(if (revealed) "Скрыть" else "Показать", color = VibeText, fontSize = 11.sp)
+                }
+                Spacer(Modifier.width(6.dp))
+                Button(
+                    onClick = {
+                        clipboard.setText(AnnotatedString(token))
+                        copied = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (copied) Color(0xFF143825) else Color(0xFF223143)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp),
+                ) {
+                    Icon(
+                        imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                        contentDescription = null,
+                        tint = if (copied) VibeGreen else VibeText,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (copied) "Готово" else "Копия", color = if (copied) VibeGreen else VibeText, fontSize = 11.sp)
+                }
+            }
+        }
     }
 }
 
