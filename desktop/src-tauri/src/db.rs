@@ -292,6 +292,7 @@ impl Db {
             "album" => "album_key ASC, (track_no IS NULL) ASC, track_no ASC, title_key ASC",
             "duration" => "duration_ms DESC, title_key ASC",
             "added" => "date_modified DESC, title_key ASC",
+            "oldest" => "date_modified ASC, title_key ASC",
             _ => "title_key ASC, artist_key ASC",
         };
 

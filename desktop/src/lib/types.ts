@@ -122,7 +122,7 @@ export interface SearchQuery {
   cachedOnly?: boolean;
 }
 
-export type SortKey = "title" | "artist" | "album" | "duration" | "added";
+export type SortKey = "title" | "artist" | "album" | "duration" | "added" | "oldest";
 
 export interface SearchResult {
   tracks: TrackRow[];

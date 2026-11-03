@@ -15,6 +15,7 @@ const sortOptions: Array<{ value: SortKey; label: string }> = [
   { value: "album", label: "По альбому" },
   { value: "duration", label: "По длительности" },
   { value: "added", label: "Сначала новые" },
+  { value: "oldest", label: "Сначала старые" },
 ];
 
 export function TopBar() {

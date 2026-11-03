@@ -248,6 +248,8 @@ pub fn search_tracks(
             Some("artist") => tracks.sort_by(|a, b| a.track.artist.to_lowercase().cmp(&b.track.artist.to_lowercase())),
             Some("album") => tracks.sort_by(|a, b| a.track.album.to_lowercase().cmp(&b.track.album.to_lowercase())),
             Some("duration") => tracks.sort_by(|a, b| b.track.duration_ms.cmp(&a.track.duration_ms)),
+            Some("added") => tracks.sort_by(|a, b| b.track.date_modified.cmp(&a.track.date_modified)),
+            Some("oldest") => tracks.sort_by(|a, b| a.track.date_modified.cmp(&b.track.date_modified)),
             _ => tracks.sort_by(|a, b| a.track.title.to_lowercase().cmp(&b.track.title.to_lowercase())),
         }
 

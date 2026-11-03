@@ -197,6 +197,9 @@ function sortedTracks(sort = "title"): Track[] {
     case "added":
       copy.sort((a, b) => b.dateModified - a.dateModified);
       break;
+    case "oldest":
+      copy.sort((a, b) => a.dateModified - b.dateModified);
+      break;
     default:
       copy.sort((a, b) => a.title.localeCompare(b.title, "ru"));
   }
