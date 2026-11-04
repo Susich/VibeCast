@@ -19,12 +19,11 @@ const DEFAULT_HOTKEYS: HotkeyConfig = {
 
 type HotkeyActionKey = Exclude<keyof HotkeyConfig, "enabled">;
 
-type SettingsTab = "all" | "theme" | "playback" | "cache" | "hotkeys" | "connection" | "updates";
+type SettingsTab = "all" | "theme" | "cache" | "hotkeys" | "connection" | "updates";
 
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "all", label: "Все" },
   { id: "theme", label: "Темы" },
-  { id: "playback", label: "Плеер" },
   { id: "cache", label: "Кэш" },
   { id: "hotkeys", label: "Клавиши" },
   { id: "connection", label: "Телефон" },
@@ -81,7 +80,6 @@ export function SettingsModal() {
   const theme = useStore((state) => state.theme);
   const setTheme = useStore((state) => state.setTheme);
   const cachedCount = useStore((state) => state.cachedCount);
-  const updateMpvPath = useStore((state) => state.updateMpvPath);
   const clearCache = useStore((state) => state.clearCache);
   const setCacheMode = useStore((state) => state.setCacheMode);
   const disconnect = useStore((state) => state.disconnect);
@@ -90,11 +88,9 @@ export function SettingsModal() {
   const saveHotkeys = useStore((state) => state.saveHotkeys);
   const setRecordingHotkey = useStore((state) => state.setRecordingHotkey);
 
-  const [mpvPath, setMpvPath] = useState("");
   const [cache, setCache] = useState<CacheStats>({ count: cachedCount, bytes: 0 });
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [recordingAction, setRecordingAction] = useState<HotkeyActionKey | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("all");
 
@@ -106,13 +102,11 @@ export function SettingsModal() {
 
   useEffect(() => {
     if (!open) return;
-    setMpvPath(settings.mpvPath ?? "");
     setConfirming(false);
-    setSaved(false);
     void call<CacheStats>("cache_stats")
       .then(setCache)
       .catch(() => undefined);
-  }, [open, settings.mpvPath]);
+  }, [open]);
 
   useEffect(() => {
     if (!recordingAction) return;
@@ -176,14 +170,6 @@ export function SettingsModal() {
   }, [recordingAction, setRecordingHotkey]);
 
   if (!open) return null;
-
-  const save = async () => {
-    setBusy(true);
-    await updateMpvPath(mpvPath);
-    setBusy(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2200);
-  };
 
   const clear = async () => {
     setBusy(true);
@@ -263,34 +249,6 @@ export function SettingsModal() {
                     </button>
                   );
                 })}
-              </div>
-            </section>
-          )}
-
-          {(activeTab === "all" || activeTab === "playback") && (
-            <section className="settings-section">
-              <div className="section-title">
-                <span>Воспроизведение</span>
-              </div>
-              <label className="field">
-                <span>Путь к mpv</span>
-                <input
-                  value={mpvPath}
-                  onChange={(event) => setMpvPath(event.target.value)}
-                  placeholder="C:\tools\mpv\mpv.exe"
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-                <small>
-                  Оставьте пустым, если mpv установлен в PATH. VibeCast также ищет mpv рядом с приложением.
-                  Изменение перезапустит плеер.
-                </small>
-              </label>
-              <div className="inline-actions">
-                <button className="secondary-button compact" onClick={() => void save()} disabled={busy}>
-                  {busy ? <SpinnerIcon size={15} /> : saved ? <CheckIcon size={15} /> : null}
-                  {saved ? "Сохранено" : "Сохранить путь"}
-                </button>
               </div>
             </section>
           )}

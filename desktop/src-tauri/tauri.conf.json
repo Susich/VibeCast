@@ -35,6 +35,9 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
+    "resources": [
+      "resources/mpv.exe"
+    ],
     "shortDescription": "Stream your phone's music library over Wi-Fi",
     "longDescription": "VibeCast discovers an Android phone on the local network, shows its music library and plays tracks on the PC with mpv."
   }

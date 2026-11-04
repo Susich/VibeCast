@@ -635,19 +635,43 @@ fn handle_line(
 fn find_mpv(app: &AppHandle, configured: Option<String>) -> Option<String> {
     if let Some(path) = configured {
         let path = path.trim().to_string();
-        if !path.is_empty() {
+        if !path.is_empty() && std::path::Path::new(&path).is_file() {
             return Some(path);
         }
     }
     if let Ok(path) = std::env::var("VIBECAST_MPV") {
-        if !path.trim().is_empty() {
+        let path = path.trim().to_string();
+        if !path.is_empty() && std::path::Path::new(&path).is_file() {
             return Some(path);
         }
     }
+    // 1. Check relative to current running executable (for portable vibecast.exe)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            for candidate in [
+                "mpv.exe",
+                "mpv",
+                "resources/mpv.exe",
+                "resources/mpv",
+                "binaries/mpv.exe",
+                "binaries/mpv",
+                "mpv/mpv.exe",
+                "mpv/mpv",
+            ] {
+                let path = parent.join(candidate);
+                if path.is_file() {
+                    return Some(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    // 2. Check Tauri resource_dir() (NSIS installer bundles resources here)
     if let Ok(resources) = app.path().resource_dir() {
         for candidate in [
             "mpv.exe",
             "mpv",
+            "resources/mpv.exe",
+            "resources/mpv",
             "binaries/mpv.exe",
             "binaries/mpv",
             "mpv/mpv.exe",
@@ -659,9 +683,25 @@ fn find_mpv(app: &AppHandle, configured: Option<String>) -> Option<String> {
             }
         }
     }
+    // 3. Check AppLocalData directory
+    if let Ok(data_dir) = app.path().app_local_data_dir() {
+        for candidate in [
+            "mpv.exe",
+            "mpv",
+            "resources/mpv.exe",
+            "binaries/mpv.exe",
+        ] {
+            let path = data_dir.join(candidate);
+            if path.is_file() {
+                return Some(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    // 4. System PATH
     if let Some(path) = find_in_path("mpv") {
         return Some(path);
     }
+    // 5. Common installation paths
     for candidate in common_mpv_paths() {
         if std::path::Path::new(&candidate).is_file() {
             return Some(candidate);
