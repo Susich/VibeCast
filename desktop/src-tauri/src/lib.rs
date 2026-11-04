@@ -158,6 +158,7 @@ pub fn run() {
             commands::set_equalizer,
             commands::apply_equalizer_live,
             commands::set_minimize_to_tray,
+            commands::set_crossfade_duration,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build VibeCast");

@@ -71,6 +71,11 @@ impl AppState {
             .get_setting("equalizer")
             .and_then(|val| serde_json::from_str(&val).ok())
             .unwrap_or_default();
+        let crossfade_duration = db
+            .get_setting("crossfade_duration")
+            .and_then(|val| val.parse::<f64>().ok())
+            .unwrap_or(1.5)
+            .clamp(0.0, 5.0);
         let settings = Settings {
             volume,
             mpv_path,
@@ -80,6 +85,7 @@ impl AppState {
             minimize_to_tray,
             hotkeys,
             equalizer: equalizer.clone(),
+            crossfade_duration,
         };
 
         let http = reqwest::Client::builder()
@@ -92,6 +98,7 @@ impl AppState {
         let cached_ids = cache.all_cached_ids();
         let _ = db.sync_cached_tracks_from_library(&cached_ids);
         let player = PlayerHandle::new(app.clone(), volume, settings.mpv_path.clone());
+        player.set_crossfade_duration(crossfade_duration);
         if equalizer.enabled {
             let player_clone = &player;
             let _ = tauri::async_runtime::block_on(player_clone.set_equalizer(equalizer.enabled, &equalizer.gains));

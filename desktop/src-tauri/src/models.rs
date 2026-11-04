@@ -202,6 +202,12 @@ pub struct Settings {
     pub hotkeys: HotkeyConfig,
     #[serde(default)]
     pub equalizer: EqualizerState,
+    #[serde(default = "default_crossfade_duration")]
+    pub crossfade_duration: f64,
+}
+
+fn default_crossfade_duration() -> f64 {
+    1.5
 }
 
 fn default_cache_mode() -> String {
@@ -219,6 +225,7 @@ impl Default for Settings {
             minimize_to_tray: default_true(),
             hotkeys: HotkeyConfig::default(),
             equalizer: EqualizerState::default(),
+            crossfade_duration: default_crossfade_duration(),
         }
     }
 }

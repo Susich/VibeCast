@@ -14,7 +14,7 @@
   "overlay": {
     "alwaysOnTop": true,
     "height": 140,
-    "isOverlay": false,
+    "isOverlay": true,
     "lastX": 15,
     "lastY": 15,
     "width": 380

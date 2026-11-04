@@ -80,6 +80,7 @@ export interface Settings {
   minimizeToTray?: boolean;
   hotkeys?: HotkeyConfig;
   equalizer?: EqualizerState;
+  crossfadeDuration?: number;
 }
 
 export interface OverlayState {

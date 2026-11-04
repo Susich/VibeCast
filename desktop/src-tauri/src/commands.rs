@@ -472,6 +472,18 @@ pub fn set_cache_mode(state: State<'_, AppState>, mode: String) -> Result<String
 }
 
 #[tauri::command]
+pub fn set_crossfade_duration(state: State<'_, AppState>, duration: f64) -> Result<f64, String> {
+    let duration = duration.clamp(0.0, 5.0);
+    state.db.set_setting("crossfade_duration", &duration.to_string())?;
+    if let Ok(mut settings) = state.settings.write() {
+        settings.crossfade_duration = duration;
+    }
+    state.player.set_crossfade_duration(duration);
+    sync_to_config_json(state.inner());
+    Ok(duration)
+}
+
+#[tauri::command]
 pub fn open_cache_dir(state: State<'_, AppState>) -> Result<(), String> {
     let dir = state.cache.audio_dir().to_path_buf();
     #[cfg(target_os = "windows")]

@@ -104,6 +104,9 @@ interface Store {
   reorderQueue: (sourceIndex: number, targetIndex: number) => void;
   setEqualizer: (equalizer: EqualizerState) => void;
   setMinimizeToTray: (enabled: boolean) => Promise<void>;
+  setCrossfadeDuration: (duration: number) => Promise<void>;
+  lastVolume: number;
+  toggleMute: () => void;
   openConnect: () => void;
   closeConnect: () => void;
   openSettings: () => void;
@@ -221,6 +224,7 @@ export const useStore = create<Store>()((set, get) => ({
   isOverlay: false,
   overlayTransition: "none",
   isRecordingHotkey: false,
+  lastVolume: 80,
 
   setRecordingHotkey(recording: boolean) {
     set({ isRecordingHotkey: recording });
@@ -239,6 +243,7 @@ export const useStore = create<Store>()((set, get) => ({
         preset: "flat",
         gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       };
+      const initialVol = boot.player.volume > 0 ? boot.player.volume : (boot.settings.volume > 0 ? boot.settings.volume : 80);
       set({
         server: boot.server,
         devices: boot.devices,
@@ -248,6 +253,7 @@ export const useStore = create<Store>()((set, get) => ({
         cachedCount: boot.cachedCount,
         theme: initialTheme,
         equalizer: initialEqualizer,
+        lastVolume: initialVol,
         isOverlay: false,
         booted: true,
       });
@@ -572,9 +578,31 @@ export const useStore = create<Store>()((set, get) => ({
     set({
       player: { ...get().player, volume: clamped },
       settings: { ...get().settings, volume: clamped },
+      ...(clamped > 0 ? { lastVolume: clamped } : {}),
     });
     // Instant real-time update to backend atomic volume (zero debounce):
     void call<PlayerState>("set_volume", { volume: clamped }).catch(() => undefined);
+  },
+
+  toggleMute() {
+    const { player, lastVolume } = get();
+    if (player.volume > 0) {
+      set({ lastVolume: player.volume });
+      get().setVolume(0);
+    } else {
+      const restored = lastVolume > 0 ? lastVolume : 80;
+      get().setVolume(restored);
+    }
+  },
+
+  async setCrossfadeDuration(duration: number) {
+    const clamped = Math.max(0, Math.min(5, Math.round(duration * 2) / 2));
+    set({ settings: { ...get().settings, crossfadeDuration: clamped } });
+    try {
+      await call("set_crossfade_duration", { duration: clamped });
+    } catch (err) {
+      get().addToast(errorText(err), "error");
+    }
   },
 
   onPlayerState(player) {

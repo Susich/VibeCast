@@ -4503,6 +4503,29 @@ body.is-overlay #root,
   box-shadow: 0 0 12px var(--accent-shadow);
 }
 
+.setting-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-glow);
+}
+
+.setting-slider-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
 /* Track row more options button */
 .track-more-btn {
   width: 26px;

@@ -31,6 +31,7 @@ export function PlayerBar() {
   const prev = useStore((state) => state.prev);
   const seek = useStore((state) => state.seek);
   const setVolume = useStore((state) => state.setVolume);
+  const toggleMute = useStore((state) => state.toggleMute);
   const toggleQueue = useStore((state) => state.toggleQueue);
   const toggleOverlay = useStore((state) => state.toggleOverlay);
   const cacheTrack = useStore((state) => state.cacheTrack);
@@ -187,7 +188,7 @@ export function PlayerBar() {
         <div className="volume" onWheel={handleVolumeWheel}>
           <button
             className="icon-button ghost"
-            onClick={() => setVolume(player.volume > 0 ? 0 : 80)}
+            onClick={toggleMute}
             title={player.volume > 0 ? "Выключить звук" : "Включить звук"}
           >
             {player.volume > 0 ? <VolumeIcon size={18} /> : <VolumeOffIcon size={18} />}

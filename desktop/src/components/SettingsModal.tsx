@@ -19,10 +19,11 @@ const DEFAULT_HOTKEYS: HotkeyConfig = {
 
 type HotkeyActionKey = Exclude<keyof HotkeyConfig, "enabled">;
 
-type SettingsTab = "all" | "equalizer" | "theme" | "cache" | "hotkeys" | "connection" | "updates";
+type SettingsTab = "all" | "general" | "equalizer" | "theme" | "cache" | "hotkeys" | "connection" | "updates";
 
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "all", label: "Все" },
+  { id: "general", label: "Основные" },
   { id: "equalizer", label: "Эквалайзер" },
   { id: "theme", label: "Темы" },
   { id: "cache", label: "Кэш" },
@@ -217,8 +218,11 @@ export function SettingsModal() {
   const setEqualizer = useStore((state) => state.setEqualizer);
   const setMinimizeToTray = useStore((state) => state.setMinimizeToTray);
   const setExpandOnHotkey = useStore((state) => state.setExpandOnHotkey);
+  const setCrossfadeDuration = useStore((state) => state.setCrossfadeDuration);
   const saveHotkeys = useStore((state) => state.saveHotkeys);
   const setRecordingHotkey = useStore((state) => state.setRecordingHotkey);
+
+  const crossfadeDuration = settings.crossfadeDuration ?? 1.5;
 
   const [cache, setCache] = useState<CacheStats>({ count: cachedCount, bytes: 0 });
   const [confirming, setConfirming] = useState(false);
@@ -352,6 +356,98 @@ export function SettingsModal() {
         </div>
 
         <div key={activeTab} className="modal-body settings-body settings-tab-enter">
+          {(activeTab === "all" || activeTab === "general") && (
+            <>
+              <section className="settings-section">
+                <div className="section-title">
+                  <span>Воспроизведение и звук</span>
+                  <span className="muted">Переходы треков</span>
+                </div>
+                <div className="setting-slider-item">
+                  <div className="setting-toggle-info">
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <b>Плавный переход между треками (Crossfade)</b>
+                      <span className="setting-badge">
+                        {crossfadeDuration > 0 ? `${crossfadeDuration.toFixed(1)} сек` : "Выключен"}
+                      </span>
+                    </div>
+                    <small>
+                      Плавное нарастание громкости при переходе к следующей композиции для мягкого перехода без резких щелчков
+                    </small>
+                  </div>
+                  <div className="crossfade-slider-wrap">
+                    <input
+                      type="range"
+                      min={0}
+                      max={5}
+                      step={0.5}
+                      value={crossfadeDuration}
+                      onChange={(e) => void setCrossfadeDuration(Number(e.target.value))}
+                      className="volume-range"
+                      style={{ width: "100%", marginTop: 8 }}
+                      aria-label="Длительность плавного перехода"
+                    />
+                    <div
+                      className="slider-ticks"
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 10,
+                        color: "var(--muted-2)",
+                        marginTop: 4,
+                      }}
+                    >
+                      <span>Выкл (0с)</span>
+                      <span>1 сек</span>
+                      <span>2 сек</span>
+                      <span>3 сек</span>
+                      <span>4 сек</span>
+                      <span>5 сек</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="settings-section">
+                <div className="section-title">
+                  <span>Окно и панель задач</span>
+                  <span className="muted">Система</span>
+                </div>
+                <label className="toggle-switch-container">
+                  <div className="setting-toggle-info">
+                    <b>Сворачивать в трей около часов при закрытии</b>
+                    <small>Окно прячется в область уведомлений Windows, плеер продолжает играть в фоне</small>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.minimizeToTray ?? true}
+                    onChange={(e) => {
+                      void setMinimizeToTray(e.target.checked);
+                    }}
+                  />
+                </label>
+              </section>
+
+              <section className="settings-section">
+                <div className="section-title">
+                  <span>Плавающий виджет</span>
+                  <span className="muted">HUD / Оверлей</span>
+                </div>
+                <label className="toggle-switch-container">
+                  <div className="setting-toggle-info">
+                    <b>Раскрывать виджет при нажатии горячих клавиш</b>
+                    <small>Разворачивать компактный кружок в расширенную карточку плеера при управлении треками с клавиатуры</small>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.expandOnHotkey ?? true}
+                    onChange={(e) => void setExpandOnHotkey(e.target.checked)}
+                  />
+                </label>
+              </section>
+            </>
+          )}
+
           {(activeTab === "all" || activeTab === "equalizer") && (
             <section className="settings-section">
               <div className="section-title">
@@ -530,24 +626,6 @@ export function SettingsModal() {
                   </button>
                 </div>
               </section>
-
-              <section className="settings-section">
-                <div className="section-title">
-                  <span>Плавающий виджет</span>
-                  <span className="muted">HUD / Оверлей</span>
-                </div>
-                <label className="toggle-switch-container">
-                  <div className="setting-toggle-info">
-                    <b>Раскрывать виджет при нажатии горячих клавиш</b>
-                    <small>Разворачивать компактный кружок в расширенную карточку плеера при управлении треками с клавиатуры</small>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={settings.expandOnHotkey ?? true}
-                    onChange={(e) => void setExpandOnHotkey(e.target.checked)}
-                  />
-                </label>
-              </section>
             </>
           )}
 
@@ -557,20 +635,6 @@ export function SettingsModal() {
                 <span>Горячие клавиши (в игре и в фоне)</span>
                 <span className="muted">{hotkeysEnabled ? "активны" : "отключены"}</span>
               </div>
-
-              <label className="toggle-switch-container" style={{ marginBottom: 12 }}>
-                <div className="setting-toggle-info">
-                  <b>Сворачивать в трей около часов при закрытии</b>
-                  <small>Окно прячется в область уведомлений Windows, плеер продолжает играть в фоне</small>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.minimizeToTray ?? true}
-                  onChange={(e) => {
-                    void setMinimizeToTray(e.target.checked);
-                  }}
-                />
-              </label>
 
               <label className="toggle-switch-container" style={{ marginBottom: 12 }}>
                 <div className="setting-toggle-info">

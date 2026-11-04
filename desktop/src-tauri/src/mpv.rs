@@ -33,6 +33,7 @@ pub struct PlayerHandle {
     volume_tx: mpsc::UnboundedSender<f64>,
     mpv_path: Arc<Mutex<Option<String>>>,
     equalizer_filter: Arc<Mutex<Option<String>>>,
+    crossfade_duration: Arc<AtomicU64>,
     request_id: AtomicU64,
 }
 
@@ -125,8 +126,18 @@ impl PlayerHandle {
             volume_tx,
             mpv_path: Arc::new(Mutex::new(mpv_path)),
             equalizer_filter: Arc::new(Mutex::new(None)),
+            crossfade_duration: Arc::new(AtomicU64::new(1.5f64.to_bits())),
             request_id: AtomicU64::new(1),
         }
+    }
+
+    pub fn set_crossfade_duration(&self, duration: f64) {
+        self.crossfade_duration
+            .store(duration.clamp(0.0, 5.0).to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn crossfade_duration(&self) -> f64 {
+        f64::from_bits(self.crossfade_duration.load(Ordering::Relaxed))
     }
 
     pub fn state(&self) -> PlayerState {
@@ -196,6 +207,22 @@ impl PlayerHandle {
         }
         options.insert("pause".to_string(), json!("no"));
 
+        let crossfade = self.crossfade_duration();
+        let was_playing = self
+            .state
+            .lock()
+            .map(|s| s.current_track_id.is_some() && !s.paused)
+            .unwrap_or(false);
+
+        // If another track was playing and crossfade is enabled, do a brief 60ms micro-fade down
+        // on outgoing track to prevent click/pop upon track switch
+        if was_playing && crossfade > 0.05 {
+            let vol = self.volume.lock().map(|v| *v).unwrap_or(80.0);
+            if vol > 5.0 {
+                self.fade_volume_ipc(vol, 0.0, 60).await;
+            }
+        }
+
         let command = if options.is_empty() {
             json!({
                 "command": ["loadfile", uri, "replace"],
@@ -221,9 +248,24 @@ impl PlayerHandle {
             .await;
 
         let filter_opt = self.equalizer_filter.lock().ok().and_then(|g| g.clone());
-        if let Some(ref filter) = filter_opt {
-            let arg = if filter.is_empty() { "" } else { filter.as_str() };
-            self.send_optional(json!({ "command": ["set_property", "af", arg] }))
+        let af_value = match (filter_opt, crossfade > 0.05) {
+            (Some(ref eq), true) if !eq.is_empty() => {
+                format!("{},lavfi=[afade=t=in:ss=0:d={crossfade:.2}]", eq)
+            }
+            (_, true) => {
+                format!("lavfi=[afade=t=in:ss=0:d={crossfade:.2}]")
+            }
+            (Some(ref eq), false) if !eq.is_empty() => {
+                eq.clone()
+            }
+            _ => String::new(),
+        };
+
+        if !af_value.is_empty() {
+            self.send_optional(json!({ "command": ["set_property", "af", af_value] }))
+                .await;
+        } else {
+            self.send_optional(json!({ "command": ["set_property", "af", ""] }))
                 .await;
         }
 

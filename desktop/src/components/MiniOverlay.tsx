@@ -26,6 +26,7 @@ export function MiniOverlay() {
   const prev = useStore((state) => state.prev);
   const seek = useStore((state) => state.seek);
   const setVolume = useStore((state) => state.setVolume);
+  const toggleMute = useStore((state) => state.toggleMute);
   const toggleOverlay = useStore((state) => state.toggleOverlay);
   const overlayTransition = useStore((state) => state.overlayTransition);
   const expandOnHotkey = useStore((state) => state.settings.expandOnHotkey ?? true);
@@ -34,7 +35,6 @@ export function MiniOverlay() {
   const [expanded, setExpanded] = useState(true);
   const [isCollapsing, setIsCollapsing] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const [lastVolume, setLastVolume] = useState(80);
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHoveredRef = useRef(false);
   const pinnedRef = useRef(pinned);
@@ -149,15 +149,6 @@ export function MiniOverlay() {
       return;
     }
     void call("start_clamped_drag").catch(() => undefined);
-  };
-
-  const handleMuteToggle = () => {
-    if (isMuted) {
-      setVolume(lastVolume > 0 ? lastVolume : 80);
-    } else {
-      setLastVolume(player.volume);
-      setVolume(0);
-    }
   };
 
   const handleVolumeWheel = (e: React.WheelEvent) => {
@@ -448,7 +439,7 @@ export function MiniOverlay() {
         <div className="mini-volume" onWheel={handleVolumeWheel}>
           <button
             className="icon-button compact ghost"
-            onClick={handleMuteToggle}
+            onClick={toggleMute}
             title={isMuted ? "Включить звук" : "Заглушить"}
             aria-label={isMuted ? "Включить звук" : "Заглушить"}
           >
