@@ -115,7 +115,31 @@ impl Db {
              CREATE TABLE IF NOT EXISTS meta (
                key TEXT PRIMARY KEY,
                value TEXT NOT NULL
-             );",
+             );
+
+             CREATE TABLE IF NOT EXISTS cached_tracks (
+               id TEXT PRIMARY KEY,
+               title TEXT NOT NULL,
+               artist TEXT NOT NULL,
+               album TEXT NOT NULL,
+               album_artist TEXT,
+               duration_ms INTEGER NOT NULL,
+               mime TEXT NOT NULL,
+               size INTEGER NOT NULL,
+               track_no INTEGER,
+               year INTEGER,
+               cover_id INTEGER,
+               date_modified INTEGER NOT NULL,
+               title_key TEXT NOT NULL,
+               artist_key TEXT NOT NULL,
+               album_key TEXT NOT NULL,
+               search_text TEXT NOT NULL
+             );
+
+             CREATE INDEX IF NOT EXISTS idx_cached_tracks_title ON cached_tracks(title_key);
+             CREATE INDEX IF NOT EXISTS idx_cached_tracks_artist ON cached_tracks(artist_key);
+             CREATE INDEX IF NOT EXISTS idx_cached_tracks_album ON cached_tracks(album_key);
+             CREATE INDEX IF NOT EXISTS idx_cached_tracks_search ON cached_tracks(search_text);",
         )
         .map_err(db_err)?;
 
@@ -335,8 +359,19 @@ impl Db {
 
     pub fn get_track(&self, id: &str) -> Result<Option<Track>, String> {
         let conn = self.lock()?;
+        let track = conn
+            .query_row(
+                &format!("SELECT {TRACK_COLUMNS} FROM tracks WHERE id = ?1"),
+                [id],
+                row_to_track,
+            )
+            .optional()
+            .map_err(db_err)?;
+        if track.is_some() {
+            return Ok(track);
+        }
         conn.query_row(
-            &format!("SELECT {TRACK_COLUMNS} FROM tracks WHERE id = ?1"),
+            &format!("SELECT {TRACK_COLUMNS} FROM cached_tracks WHERE id = ?1"),
             [id],
             row_to_track,
         )
@@ -350,9 +385,69 @@ impl Db {
         }
         let conn = self.lock()?;
         let mut results = Vec::new();
+        let mut found_ids = std::collections::HashSet::new();
+
         for chunk in ids.chunks(200) {
             let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
             let sql = format!("SELECT {TRACK_COLUMNS} FROM tracks WHERE id IN ({placeholders})");
+            let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+            let mapped = stmt
+                .query_map(params_from_iter(chunk.iter()), row_to_track)
+                .map_err(db_err)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(db_err)?;
+            for t in mapped {
+                found_ids.insert(t.id.clone());
+                results.push(t);
+            }
+        }
+
+        let missing: Vec<String> = ids
+            .iter()
+            .filter(|id| !found_ids.contains(*id))
+            .cloned()
+            .collect();
+        if !missing.is_empty() {
+            for chunk in missing.chunks(200) {
+                let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                let sql = format!(
+                    "SELECT {TRACK_COLUMNS} FROM cached_tracks WHERE id IN ({placeholders})"
+                );
+                let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+                let mapped = stmt
+                    .query_map(params_from_iter(chunk.iter()), row_to_track)
+                    .map_err(db_err)?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .map_err(db_err)?;
+                results.extend(mapped);
+            }
+        }
+
+        Ok(results)
+    }
+
+    #[allow(dead_code)]
+    pub fn get_cached_track(&self, id: &str) -> Result<Option<Track>, String> {
+        let conn = self.lock()?;
+        conn.query_row(
+            &format!("SELECT {TRACK_COLUMNS} FROM cached_tracks WHERE id = ?1"),
+            [id],
+            row_to_track,
+        )
+        .optional()
+        .map_err(db_err)
+    }
+
+    #[allow(dead_code)]
+    pub fn get_cached_tracks(&self, ids: &[String]) -> Result<Vec<Track>, String> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.lock()?;
+        let mut results = Vec::new();
+        for chunk in ids.chunks(200) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!("SELECT {TRACK_COLUMNS} FROM cached_tracks WHERE id IN ({placeholders})");
             let mut stmt = conn.prepare(&sql).map_err(db_err)?;
             let mapped = stmt
                 .query_map(params_from_iter(chunk.iter()), row_to_track)
@@ -364,13 +459,107 @@ impl Db {
         Ok(results)
     }
 
+    pub fn save_cached_track(&self, track: &Track) -> Result<(), String> {
+        let conn = self.lock()?;
+        let title_key = track.title.to_lowercase();
+        let artist_key = track.artist.to_lowercase();
+        let album_key = track.album.to_lowercase();
+        let search_text = format!(
+            "{} {} {} {}",
+            track.title,
+            track.artist,
+            track.album,
+            track.album_artist.as_deref().unwrap_or("")
+        )
+        .to_lowercase();
+
+        conn.execute(
+            "INSERT INTO cached_tracks (
+               id, title, artist, album, album_artist, duration_ms, mime, size,
+               track_no, year, cover_id, date_modified,
+               title_key, artist_key, album_key, search_text
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+             ON CONFLICT(id) DO UPDATE SET
+               title = excluded.title,
+               artist = excluded.artist,
+               album = excluded.album,
+               album_artist = excluded.album_artist,
+               duration_ms = excluded.duration_ms,
+               mime = excluded.mime,
+               size = excluded.size,
+               track_no = excluded.track_no,
+               year = excluded.year,
+               cover_id = excluded.cover_id,
+               date_modified = excluded.date_modified,
+               title_key = excluded.title_key,
+               artist_key = excluded.artist_key,
+               album_key = excluded.album_key,
+               search_text = excluded.search_text",
+            params![
+                track.id,
+                track.title,
+                track.artist,
+                track.album,
+                track.album_artist,
+                track.duration_ms,
+                track.mime,
+                track.size,
+                track.track_no,
+                track.year,
+                track.cover_id,
+                track.date_modified,
+                title_key,
+                artist_key,
+                album_key,
+                search_text,
+            ],
+        )
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn sync_cached_tracks_from_library(&self, cached_ids: &[String]) -> Result<(), String> {
+        if cached_ids.is_empty() {
+            return Ok(());
+        }
+        let conn = self.lock()?;
+        for chunk in cached_ids.chunks(200) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "INSERT OR REPLACE INTO cached_tracks SELECT * FROM tracks WHERE id IN ({placeholders})"
+            );
+            conn.execute(&sql, params_from_iter(chunk.iter()))
+                .map_err(db_err)?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_cached_track(&self, track_id: &str) -> Result<(), String> {
+        let conn = self.lock()?;
+        conn.execute("DELETE FROM cached_tracks WHERE id = ?1", [track_id])
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn clear_cached_tracks(&self) -> Result<(), String> {
+        let conn = self.lock()?;
+        conn.execute("DELETE FROM cached_tracks", [])
+            .map_err(db_err)?;
+        Ok(())
+    }
+
     pub fn facets(&self) -> Result<Facets, String> {
         let conn = self.lock()?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT MIN(artist) AS name, COUNT(*) AS count
-                 FROM tracks GROUP BY artist_key ORDER BY artist_key LIMIT 20000",
+                 FROM (
+                     SELECT artist, artist_key FROM tracks
+                     UNION ALL
+                     SELECT artist, artist_key FROM cached_tracks WHERE id NOT IN (SELECT id FROM tracks)
+                 )
+                 GROUP BY artist_key ORDER BY artist_key LIMIT 20000",
             )
             .map_err(db_err)?;
         let artists = stmt
@@ -387,7 +576,12 @@ impl Db {
         let mut stmt = conn
             .prepare(
                 "SELECT MIN(album) AS album, MIN(artist) AS artist, COUNT(*) AS count, MIN(id) AS cover_id
-                 FROM tracks GROUP BY album_key, artist_key ORDER BY album_key, artist_key LIMIT 20000",
+                 FROM (
+                     SELECT id, album, artist, album_key, artist_key FROM tracks
+                     UNION ALL
+                     SELECT id, album, artist, album_key, artist_key FROM cached_tracks WHERE id NOT IN (SELECT id FROM tracks)
+                 )
+                 GROUP BY album_key, artist_key ORDER BY album_key, artist_key LIMIT 20000",
             )
             .map_err(db_err)?;
         let albums = stmt
@@ -447,5 +641,64 @@ impl Db {
         )
         .map_err(db_err)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cached_tracks_persist_after_reset_catalog() {
+        let temp_dir = std::env::temp_dir().join(format!("vibecast_test_db_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let db_path = temp_dir.join("test.db");
+        let db = Db::open(&db_path).expect("open db");
+
+        let track = Track {
+            id: "test_track_1".to_string(),
+            title: "Test Track 1".to_string(),
+            artist: "Awesome Artist".to_string(),
+            album: "Awesome Album".to_string(),
+            album_artist: None,
+            duration_ms: 185000,
+            mime: "audio/mp3".to_string(),
+            size: 5000000,
+            track_no: Some(1),
+            year: Some(2024),
+            cover_id: None,
+            date_modified: 1000,
+        };
+
+        // Populate library tracks
+        db.replace_tracks(&[track.clone()], 1).expect("replace tracks");
+        assert_eq!(db.get_track("test_track_1").unwrap().unwrap().title, "Test Track 1");
+
+        // Sync to cached_tracks
+        db.sync_cached_tracks_from_library(&["test_track_1".to_string()]).expect("sync cached");
+
+        // Now simulate phone disconnect by resetting catalog
+        db.reset_catalog().expect("reset catalog");
+
+        // Library tracks are wiped...
+        let stats = db.stats().expect("stats");
+        assert_eq!(stats.tracks, 0);
+
+        // ...BUT get_track still finds the cached track with full metadata!
+        let found = db.get_track("test_track_1").unwrap().expect("track should be found in cached_tracks");
+        assert_eq!(found.title, "Test Track 1");
+        assert_eq!(found.artist, "Awesome Artist");
+        assert_eq!(found.album, "Awesome Album");
+        assert_eq!(found.duration_ms, 185000);
+
+        // get_tracks_by_ids also finds it
+        let found_batch = db.get_tracks_by_ids(&["test_track_1".to_string()]).unwrap();
+        assert_eq!(found_batch.len(), 1);
+        assert_eq!(found_batch[0].title, "Test Track 1");
+
+        // Facets also list the artist from cached_tracks
+        let facets = db.facets().expect("facets");
+        assert!(facets.artists.iter().any(|a| a.name == "Awesome Artist"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

@@ -156,6 +156,9 @@ pub async fn disconnect(app: AppHandle, state: State<'_, AppState>) -> Result<()
             .map_err(|_| "Состояние подключения недоступно".to_string())?;
         *current = None;
     }
+    // Сохраняем метаданные кэшированных треков перед сбросом каталога
+    let cached_ids = state.cache.all_cached_ids();
+    let _ = state.db.sync_cached_tracks_from_library(&cached_ids);
     state.db.clear_server()?;
     // Явное отключение очищает каталог: чужие треки не должны оставаться на ПК.
     state.db.reset_catalog()?;
@@ -182,6 +185,7 @@ pub fn search_tracks(
         if !cached_ids.is_empty() {
             if let Ok(db_tracks) = state.db.get_tracks_by_ids(&cached_ids) {
                 for t in db_tracks {
+                    let _ = state.db.save_cached_track(&t);
                     found_ids.insert(t.id.clone());
                     tracks.push(TrackRow {
                         track: t,
@@ -353,6 +357,7 @@ pub async fn play_track(
             .get_setting("cache_mode")
             .unwrap_or_else(|| "auto".to_string());
         if cache_mode != "manual" {
+            let _ = state.db.save_cached_track(&track);
             state
                 .cache
                 .ensure_download(track.clone(), session.base_url, session.token);
@@ -425,6 +430,7 @@ pub fn cache_stats(state: State<'_, AppState>) -> CacheStats {
 
 #[tauri::command]
 pub fn clear_cache(state: State<'_, AppState>) -> Result<CacheStats, String> {
+    let _ = state.db.clear_cached_tracks();
     state.cache.clear()
 }
 
@@ -433,6 +439,7 @@ pub fn delete_cached_track(
     state: State<'_, AppState>,
     track_id: String,
 ) -> Result<CacheStats, String> {
+    let _ = state.db.delete_cached_track(&track_id);
     state.cache.delete_track(&track_id)
 }
 
@@ -447,6 +454,7 @@ pub async fn cache_track(
         return Err("Трек не найден в каталоге".to_string());
     };
 
+    let _ = state.db.save_cached_track(&track);
     let session = state.session().ok_or_else(|| "Телефон не подключен".to_string())?;
     state.cache.ensure_download(track, session.base_url, session.token);
     Ok(())
@@ -1232,6 +1240,8 @@ pub async fn sync_catalog(app: &AppHandle) -> Result<LibraryStats, String> {
     }
 
     let stats = state.db.replace_tracks(&tracks, version)?;
+    let cached_ids = state.cache.all_cached_ids();
+    let _ = state.db.sync_cached_tracks_from_library(&cached_ids);
     state.version.store(version, Ordering::SeqCst);
     state.track_count.store(stats.tracks, Ordering::SeqCst);
     state.set_online(app, true);
@@ -1563,3 +1573,60 @@ async fn sse_loop(app: AppHandle, generation: u64) {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
 }
+
+#[tauri::command]
+pub async fn get_equalizer(
+    state: State<'_, AppState>,
+) -> Result<crate::models::EqualizerState, String> {
+    Ok(state.settings().equalizer)
+}
+
+#[tauri::command]
+pub async fn set_equalizer(
+    state: State<'_, AppState>,
+    equalizer: crate::models::EqualizerState,
+) -> Result<crate::models::EqualizerState, String> {
+    {
+        let mut settings = state
+            .settings
+            .write()
+            .map_err(|_| "Настройки недоступны".to_string())?;
+        settings.equalizer = equalizer.clone();
+    }
+    let serialized = serde_json::to_string(&equalizer).map_err(|e| e.to_string())?;
+    state.db.set_setting("equalizer", &serialized)?;
+    state.player.set_equalizer(equalizer.enabled, &equalizer.gains).await;
+    sync_to_config_json(state.inner());
+    Ok(equalizer)
+}
+
+#[tauri::command]
+pub async fn apply_equalizer_live(
+    state: State<'_, AppState>,
+    enabled: bool,
+    gains: Vec<f64>,
+) -> Result<(), String> {
+    state.player.set_equalizer(enabled, &gains).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_minimize_to_tray(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<bool, String> {
+    {
+        let mut settings = state
+            .settings
+            .write()
+            .map_err(|_| "Настройки недоступны".to_string())?;
+        settings.minimize_to_tray = enabled;
+    }
+    state
+        .db
+        .set_setting("minimize_to_tray", if enabled { "true" } else { "false" })?;
+    sync_to_config_json(state.inner());
+    Ok(enabled)
+}
+
+

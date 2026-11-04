@@ -158,6 +158,35 @@ fn default_true() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EqualizerState {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_preset")]
+    pub preset: String,
+    #[serde(default = "default_gains")]
+    pub gains: Vec<f64>,
+}
+
+fn default_preset() -> String {
+    "flat".to_string()
+}
+
+fn default_gains() -> Vec<f64> {
+    vec![0.0; 10]
+}
+
+impl Default for EqualizerState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            preset: default_preset(),
+            gains: default_gains(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub volume: f64,
     pub mpv_path: Option<String>,
@@ -167,8 +196,12 @@ pub struct Settings {
     pub cache_mode: String,
     #[serde(default = "default_true")]
     pub expand_on_hotkey: bool,
+    #[serde(default = "default_true")]
+    pub minimize_to_tray: bool,
     #[serde(default)]
     pub hotkeys: HotkeyConfig,
+    #[serde(default)]
+    pub equalizer: EqualizerState,
 }
 
 fn default_cache_mode() -> String {
@@ -183,7 +216,9 @@ impl Default for Settings {
             theme: default_theme(),
             cache_mode: default_cache_mode(),
             expand_on_hotkey: default_true(),
+            minimize_to_tray: default_true(),
             hotkeys: HotkeyConfig::default(),
+            equalizer: EqualizerState::default(),
         }
     }
 }

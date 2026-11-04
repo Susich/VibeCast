@@ -22,6 +22,10 @@ export function bindEvents(): void {
     useStore.getState().onPlayerState(player);
   });
 
+  void listen<void>("player://tray-next", () => {
+    void useStore.getState().next();
+  });
+
   void listen<RemoteCommand>("remote-control", async (cmd) => {
     if (!cmd?.action) return;
     const store = useStore.getState();

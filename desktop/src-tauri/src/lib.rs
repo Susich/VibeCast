@@ -9,7 +9,9 @@ mod models;
 mod mpv;
 mod state;
 
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager};
 
 use state::AppState;
 
@@ -46,10 +48,74 @@ pub fn run() {
 
             hotkeys::start_global_hotkeys(handle.clone());
 
+            // Setup system tray
+            if let Some(icon) = app.default_window_icon().cloned() {
+                let play_item = MenuItem::with_id(app, "play_pause", "Воспроизведение / Пауза", true, None::<&str>)?;
+                let next_item = MenuItem::with_id(app, "next", "Следующий трек", true, None::<&str>)?;
+                let show_item = MenuItem::with_id(app, "show", "Показать VibeCast", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&play_item, &next_item, &show_item, &quit_item])?;
+
+                let _tray = TrayIconBuilder::new()
+                    .icon(icon)
+                    .tooltip("VibeCast")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "play_pause" => {
+                            let app_handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let state = app_handle.state::<AppState>();
+                                state.player.toggle_pause().await;
+                            });
+                        }
+                        "next" => {
+                            let _ = app.emit("player://tray-next", ());
+                        }
+                        "show" => {
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                            }
+                        }
+                    })
+                    .build(app);
+            }
+
             Ok(())
         })
-        .on_window_event(|_window, _event| {
-            // Drag positioning and boundaries are managed cleanly and clamped by start_clamped_drag
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                let minimize = app
+                    .try_state::<AppState>()
+                    .map(|s| s.settings().minimize_to_tray)
+                    .unwrap_or(true);
+                if minimize {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap,
@@ -88,6 +154,10 @@ pub fn run() {
             commands::get_overlay_state,
             commands::get_app_config,
             commands::check_for_updates,
+            commands::get_equalizer,
+            commands::set_equalizer,
+            commands::apply_equalizer_live,
+            commands::set_minimize_to_tray,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build VibeCast");

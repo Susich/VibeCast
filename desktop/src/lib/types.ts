@@ -65,13 +65,21 @@ export interface HotkeyConfig {
   toggleOverlay: string;
 }
 
+export interface EqualizerState {
+  enabled: boolean;
+  preset: string;
+  gains: number[];
+}
+
 export interface Settings {
   volume: number;
   mpvPath: string | null;
   theme?: string;
   cacheMode?: "auto" | "manual";
   expandOnHotkey?: boolean;
+  minimizeToTray?: boolean;
   hotkeys?: HotkeyConfig;
+  equalizer?: EqualizerState;
 }
 
 export interface OverlayState {

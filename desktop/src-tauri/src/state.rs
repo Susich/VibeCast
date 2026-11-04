@@ -59,8 +59,16 @@ impl AppState {
             .get_setting("expand_on_hotkey")
             .map(|value| value == "true")
             .unwrap_or(true);
+        let minimize_to_tray = db
+            .get_setting("minimize_to_tray")
+            .map(|value| value == "true")
+            .unwrap_or(true);
         let hotkeys: crate::models::HotkeyConfig = db
             .get_setting("hotkeys")
+            .and_then(|val| serde_json::from_str(&val).ok())
+            .unwrap_or_default();
+        let equalizer: crate::models::EqualizerState = db
+            .get_setting("equalizer")
             .and_then(|val| serde_json::from_str(&val).ok())
             .unwrap_or_default();
         let settings = Settings {
@@ -69,7 +77,9 @@ impl AppState {
             theme,
             cache_mode,
             expand_on_hotkey,
+            minimize_to_tray,
             hotkeys,
+            equalizer: equalizer.clone(),
         };
 
         let http = reqwest::Client::builder()
@@ -79,7 +89,13 @@ impl AppState {
             .map_err(|e| format!("Не удалось создать HTTP-клиент: {e}"))?;
 
         let cache = CacheManager::new(app.clone(), http.clone(), &crate::cache::cache_root())?;
+        let cached_ids = cache.all_cached_ids();
+        let _ = db.sync_cached_tracks_from_library(&cached_ids);
         let player = PlayerHandle::new(app.clone(), volume, settings.mpv_path.clone());
+        if equalizer.enabled {
+            let player_clone = &player;
+            let _ = tauri::async_runtime::block_on(player_clone.set_equalizer(equalizer.enabled, &equalizer.gains));
+        }
         let discovery = Discovery::start(app.clone());
         let session = db.load_server();
 

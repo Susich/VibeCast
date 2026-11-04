@@ -322,6 +322,13 @@ export function ChevronDownIcon(props: IconProps) {
   });
 }
 
+export function ChevronUpIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: <path d="m18 15-6-6-6 6" />,
+  });
+}
+
 export function ArrowUpDownIcon(props: IconProps) {
   return base({
     ...props,
@@ -402,6 +409,97 @@ export function PinIcon(props: IconProps) {
       <>
         <path d="M12 17v5" />
         <path d="M9 2v4l-2 3v2h10v-2l-2-3V2H9Z" fill="none" />
+      </>
+    ),
+  });
+}
+
+export function ShuffleIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <path d="M16 3h5v5" />
+        <path d="M4 20L21 3" />
+        <path d="M21 16v5h-5" />
+        <path d="M15 15l6 6" />
+        <path d="M4 4l5 5" />
+      </>
+    ),
+  });
+}
+
+export function MoreVerticalIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+        <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+        <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+      </>
+    ),
+  });
+}
+
+export function MicIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <line x1="12" y1="19" x2="12" y2="22" />
+      </>
+    ),
+  });
+}
+
+export function ListPlusIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <path d="M11 12H3" />
+        <path d="M16 6H3" />
+        <path d="M16 18H3" />
+        <path d="M18 9v6" />
+        <path d="M21 12h-6" />
+      </>
+    ),
+  });
+}
+
+export function SlidersIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <line x1="4" y1="21" x2="4" y2="14" />
+        <line x1="4" y1="10" x2="4" y2="3" />
+        <line x1="12" y1="21" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12" y2="3" />
+        <line x1="20" y1="21" x2="20" y2="16" />
+        <line x1="20" y1="12" x2="20" y2="3" />
+        <line x1="1" y1="14" x2="7" y2="14" />
+        <line x1="9" y1="8" x2="15" y2="8" />
+        <line x1="17" y1="16" x2="23" y2="16" />
+      </>
+    ),
+  });
+}
+
+export function GripVerticalIcon(props: IconProps) {
+  return base({
+    ...props,
+    children: (
+      <>
+        <circle cx="9" cy="12" r="1.2" fill="currentColor" />
+        <circle cx="9" cy="5" r="1.2" fill="currentColor" />
+        <circle cx="9" cy="19" r="1.2" fill="currentColor" />
+        <circle cx="15" cy="12" r="1.2" fill="currentColor" />
+        <circle cx="15" cy="5" r="1.2" fill="currentColor" />
+        <circle cx="15" cy="19" r="1.2" fill="currentColor" />
       </>
     ),
   });

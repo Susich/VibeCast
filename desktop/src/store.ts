@@ -8,6 +8,7 @@ import type {
   CacheProgress,
   CacheStats,
   Device,
+  EqualizerState,
   Facets,
   HotkeyConfig,
   LibraryStats,
@@ -53,6 +54,10 @@ interface Store {
   queue: TrackRow[];
   queueIndex: number;
   queueOpen: boolean;
+  shuffle: boolean;
+  unshuffledQueue: TrackRow[];
+
+  equalizer: EqualizerState;
 
   connectOpen: boolean;
   settingsOpen: boolean;
@@ -92,6 +97,13 @@ interface Store {
   onEof: (payload: { trackId?: string }) => void;
   clearQueue: () => void;
   toggleQueue: () => void;
+  toggleShuffle: () => void;
+  playNext: (track: TrackRow) => void;
+  addToQueue: (track: TrackRow) => void;
+  removeFromQueue: (index: number) => void;
+  reorderQueue: (sourceIndex: number, targetIndex: number) => void;
+  setEqualizer: (equalizer: EqualizerState) => void;
+  setMinimizeToTray: (enabled: boolean) => Promise<void>;
   openConnect: () => void;
   closeConnect: () => void;
   openSettings: () => void;
@@ -133,6 +145,15 @@ function sameDeviceName(saved: string, discovered: string): boolean {
   return a === b || a.includes(b) || b.includes(a);
 }
 
+function shuffleArray<T>(items: T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 let autoConnectAttempted = new Set<string>();
 let discoveryPrompted = false;
 
@@ -150,6 +171,8 @@ function pickReconnect(
     ) ?? null
   );
 }
+
+let eqSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useStore = create<Store>()((set, get) => ({
   booted: false,
@@ -176,6 +199,14 @@ export const useStore = create<Store>()((set, get) => ({
   queue: [],
   queueIndex: -1,
   queueOpen: false,
+  shuffle: false,
+  unshuffledQueue: [],
+
+  equalizer: {
+    enabled: false,
+    preset: "flat",
+    gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
 
   connectOpen: false,
   settingsOpen: false,
@@ -203,6 +234,11 @@ export const useStore = create<Store>()((set, get) => ({
       const boot = await call<Bootstrap>("bootstrap");
       const initialTheme = boot.settings.theme || "cyberpunk";
       applyTheme(initialTheme);
+      const initialEqualizer = boot.settings.equalizer || {
+        enabled: false,
+        preset: "flat",
+        gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      };
       set({
         server: boot.server,
         devices: boot.devices,
@@ -211,6 +247,7 @@ export const useStore = create<Store>()((set, get) => ({
         stats: boot.stats,
         cachedCount: boot.cachedCount,
         theme: initialTheme,
+        equalizer: initialEqualizer,
         isOverlay: false,
         booted: true,
       });
@@ -368,13 +405,25 @@ export const useStore = create<Store>()((set, get) => ({
 
   playTrack(track, customQueue) {
     const queueToUse = customQueue && customQueue.length > 0 ? customQueue : get().tracks;
-    // When clicking a track in the list, queue is formed from current view's tracks in their exact sort order
     const nextQueue = queueToUse.some((row) => row.id === track.id) ? [...queueToUse] : [track];
-    const nextIndex = Math.max(0, nextQueue.findIndex((row) => row.id === track.id));
+    const isShuffle = get().shuffle;
+
+    let activeQueue: TrackRow[];
+    let activeIndex: number;
+
+    if (isShuffle && nextQueue.length > 1) {
+      const remaining = nextQueue.filter((t) => t.id !== track.id);
+      activeQueue = [track, ...shuffleArray(remaining)];
+      activeIndex = 0;
+    } else {
+      activeQueue = nextQueue;
+      activeIndex = Math.max(0, nextQueue.findIndex((row) => row.id === track.id));
+    }
 
     set({
-      queue: nextQueue,
-      queueIndex: nextIndex,
+      queue: activeQueue,
+      queueIndex: activeIndex,
+      unshuffledQueue: nextQueue,
       player: {
         ...get().player,
         currentTrackId: track.id,
@@ -547,6 +596,129 @@ export const useStore = create<Store>()((set, get) => ({
     set({ queueOpen: !get().queueOpen });
   },
 
+  toggleShuffle() {
+    const { shuffle, queue, queueIndex, player } = get();
+    if (!shuffle) {
+      if (queue.length <= 1) {
+        set({ shuffle: true, unshuffledQueue: [...queue] });
+        get().addToast("Перемешивание включено", "info");
+        return;
+      }
+      const currentTrack = queue[queueIndex] || queue.find((t) => t.id === player.currentTrackId) || queue[0];
+      const others = queue.filter((t) => t.id !== currentTrack.id);
+      const shuffled = [currentTrack, ...shuffleArray(others)];
+      set({
+        shuffle: true,
+        unshuffledQueue: [...queue],
+        queue: shuffled,
+        queueIndex: 0,
+      });
+      get().addToast("Перемешивание включено", "info");
+    } else {
+      const { unshuffledQueue } = get();
+      const restored = unshuffledQueue.length > 0 ? [...unshuffledQueue] : [...queue];
+      let newIndex = 0;
+      if (player.currentTrackId) {
+        const idx = restored.findIndex((t) => t.id === player.currentTrackId);
+        if (idx !== -1) newIndex = idx;
+      }
+      set({
+        shuffle: false,
+        queue: restored,
+        queueIndex: newIndex,
+      });
+      get().addToast("Перемешивание выключено", "info");
+    }
+  },
+
+  playNext(track: TrackRow) {
+    const { queue, queueIndex, player } = get();
+    if (queue.length === 0) {
+      get().playTrack(track);
+      return;
+    }
+    let curr = queueIndex;
+    if (player.currentTrackId && (curr < 0 || queue[curr]?.id !== player.currentTrackId)) {
+      const found = queue.findIndex((t) => t.id === player.currentTrackId);
+      if (found !== -1) curr = found;
+    }
+    const newQueue = [...queue];
+    const insertIndex = Math.max(0, curr + 1);
+    newQueue.splice(insertIndex, 0, track);
+    set({
+      queue: newQueue,
+      unshuffledQueue: get().unshuffledQueue.length > 0 ? [...get().unshuffledQueue, track] : newQueue,
+    });
+    get().addToast(`«${track.title}» будет воспроизведён следующим`, "success");
+  },
+
+  addToQueue(track: TrackRow) {
+    const { queue } = get();
+    if (queue.length === 0) {
+      get().playTrack(track);
+      return;
+    }
+    const newQueue = [...queue, track];
+    set({
+      queue: newQueue,
+      unshuffledQueue: get().unshuffledQueue.length > 0 ? [...get().unshuffledQueue, track] : newQueue,
+    });
+    get().addToast(`«${track.title}» добавлен в конец очереди`, "success");
+  },
+
+  reorderQueue(sourceIndex: number, targetIndex: number) {
+    const { queue, player } = get();
+    if (sourceIndex < 0 || sourceIndex >= queue.length || targetIndex < 0 || targetIndex >= queue.length) return;
+    const newQueue = [...queue];
+    const [removed] = newQueue.splice(sourceIndex, 1);
+    newQueue.splice(targetIndex, 0, removed);
+    let newIndex = 0;
+    if (player.currentTrackId) {
+      const idx = newQueue.findIndex((t) => t.id === player.currentTrackId);
+      if (idx !== -1) newIndex = idx;
+    }
+    set({ queue: newQueue, queueIndex: newIndex });
+  },
+
+  setEqualizer(equalizer: EqualizerState) {
+    set({ equalizer });
+    void call("apply_equalizer_live", { enabled: equalizer.enabled, gains: equalizer.gains }).catch(() => {});
+    if (eqSaveTimer) clearTimeout(eqSaveTimer);
+    eqSaveTimer = setTimeout(async () => {
+      try {
+        await call<EqualizerState>("set_equalizer", { equalizer: get().equalizer });
+      } catch (err) {
+        get().addToast(errorText(err), "error");
+      }
+    }, 150);
+  },
+
+  async setMinimizeToTray(enabled: boolean) {
+    set({ settings: { ...get().settings, minimizeToTray: enabled } });
+    try {
+      await call("set_minimize_to_tray", { enabled });
+    } catch (err) {
+      get().addToast(errorText(err), "error");
+    }
+  },
+
+  removeFromQueue(index: number) {
+    const { queue, queueIndex, player } = get();
+    if (index < 0 || index >= queue.length) return;
+    const removed = queue[index];
+    const newQueue = queue.filter((_, idx) => idx !== index);
+    let newIndex = queueIndex;
+    if (player.currentTrackId) {
+      const idx = newQueue.findIndex((t) => t.id === player.currentTrackId);
+      newIndex = idx !== -1 ? idx : Math.min(queueIndex, Math.max(0, newQueue.length - 1));
+    }
+    set({
+      queue: newQueue,
+      queueIndex: newIndex,
+      unshuffledQueue: get().unshuffledQueue.filter((t) => t.id !== removed.id),
+    });
+  },
+
   openConnect() {
     set({ connectOpen: true, connectError: null });
   },
@@ -635,6 +807,7 @@ export const useStore = create<Store>()((set, get) => ({
     } catch (error) {
       get().addToast(errorText(error), "error");
     }
+    const prevCachedCount = get().cachedCount;
     set({
       server: null,
       stats: emptyStats,
@@ -643,13 +816,20 @@ export const useStore = create<Store>()((set, get) => ({
       facets: { artists: [], albums: [] },
       queue: [],
       queueIndex: -1,
-      covers: {},
       coverLoading: {},
       progress: {},
-      cachedCount: 0,
       player: emptyPlayer(get().settings.volume),
       settingsOpen: false,
     });
+    try {
+      const stats = await call<CacheStats>("cache_stats");
+      set({ cachedCount: stats.count });
+    } catch {
+      set({ cachedCount: prevCachedCount });
+    }
+    if (get().view === "cached") {
+      void get().refreshLibrary();
+    }
     get().addToast("Телефон отключён", "info");
   },
 

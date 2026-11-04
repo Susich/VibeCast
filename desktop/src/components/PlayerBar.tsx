@@ -11,6 +11,7 @@ import {
   PauseIcon,
   PlayIcon,
   QueueIcon,
+  ShuffleIcon,
   SkipBackIcon,
   SkipForwardIcon,
   TrashIcon,
@@ -23,6 +24,8 @@ export function PlayerBar() {
   const queue = useStore((state) => state.queue);
   const queueIndex = useStore((state) => state.queueIndex);
   const queueOpen = useStore((state) => state.queueOpen);
+  const shuffle = useStore((state) => state.shuffle);
+  const toggleShuffle = useStore((state) => state.toggleShuffle);
   const toggle = useStore((state) => state.toggle);
   const next = useStore((state) => state.next);
   const prev = useStore((state) => state.prev);
@@ -45,6 +48,13 @@ export function PlayerBar() {
     setDragging(false);
     setDraft(0);
   }, [current]);
+
+  const handleVolumeWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const step = 3;
+    const delta = e.deltaY < 0 ? step : -step;
+    setVolume(Math.max(0, Math.min(100, Math.round(player.volume + delta))));
+  };
 
   const commit = (position: number) => {
     setDragging(false);
@@ -107,6 +117,14 @@ export function PlayerBar() {
 
       <div className="player-center">
         <div className="transport">
+          <button
+            className={`transport-button shuffle-btn ${shuffle ? "active" : ""}`}
+            onClick={toggleShuffle}
+            title={shuffle ? "Случайный порядок: включён" : "Случайный порядок: выключен"}
+            aria-label="Случайный порядок"
+          >
+            <ShuffleIcon size={16} />
+          </button>
           <button className="transport-button" onClick={() => void prev()} disabled={!current} title="Предыдущий">
             <SkipBackIcon size={18} />
           </button>
@@ -166,7 +184,7 @@ export function PlayerBar() {
             {queueIndex + 1} / {queue.length}
           </span>
         )}
-        <div className="volume">
+        <div className="volume" onWheel={handleVolumeWheel}>
           <button
             className="icon-button ghost"
             onClick={() => setVolume(player.volume > 0 ? 0 : 80)}
@@ -183,6 +201,7 @@ export function PlayerBar() {
             value={player.volume}
             style={{ "--range-progress": `${player.volume}%` } as CSSProperties}
             onChange={(event) => setVolume(Number(event.target.value))}
+            onWheel={handleVolumeWheel}
             aria-label="Громкость"
           />
         </div>

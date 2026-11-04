@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.vibecast"
-version = "0.2.7"
+version = "0.2.9"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17

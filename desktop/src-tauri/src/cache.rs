@@ -256,6 +256,11 @@ impl CacheManager {
                     if let Ok(mut set) = manager.inner.cached.lock() {
                         set.insert(track_id.clone());
                     }
+                    if track.cover_id.is_some() {
+                        let _ = manager
+                            .cover_data_url(&track_id, Some(&base_url), Some(&token))
+                            .await;
+                    }
                     let progress = CacheProgress {
                         track_id,
                         received: track.size.max(0) as u64,

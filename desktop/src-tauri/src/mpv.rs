@@ -32,6 +32,7 @@ pub struct PlayerHandle {
     current_volume: Arc<AtomicU64>,
     volume_tx: mpsc::UnboundedSender<f64>,
     mpv_path: Arc<Mutex<Option<String>>>,
+    equalizer_filter: Arc<Mutex<Option<String>>>,
     request_id: AtomicU64,
 }
 
@@ -123,6 +124,7 @@ impl PlayerHandle {
             current_volume,
             volume_tx,
             mpv_path: Arc::new(Mutex::new(mpv_path)),
+            equalizer_filter: Arc::new(Mutex::new(None)),
             request_id: AtomicU64::new(1),
         }
     }
@@ -155,6 +157,8 @@ impl PlayerHandle {
         }
 
         self.ensure_started().await?;
+
+        let vol = self.volume.lock().map(|v| *v).unwrap_or(80.0);
 
         {
             let mut state = self
@@ -213,6 +217,16 @@ impl PlayerHandle {
             }))
             .await;
 
+        self.send_optional(json!({ "command": ["set_property", "volume", vol] }))
+            .await;
+
+        let filter_opt = self.equalizer_filter.lock().ok().and_then(|g| g.clone());
+        if let Some(ref filter) = filter_opt {
+            let arg = if filter.is_empty() { "" } else { filter.as_str() };
+            self.send_optional(json!({ "command": ["set_property", "af", arg] }))
+                .await;
+        }
+
         self.emit_state(true);
         Ok(())
     }
@@ -234,15 +248,69 @@ impl PlayerHandle {
         self.emit_state(true);
     }
 
+    async fn fade_volume_ipc(&self, from: f64, to: f64, duration_ms: u64) {
+        if (from - to).abs() < 1.0 {
+            return;
+        }
+        let steps = 4;
+        let step_dur = Duration::from_millis((duration_ms / steps).max(1));
+        for i in 1..=steps {
+            let t = i as f64 / steps as f64;
+            let vol = from + (to - from) * t;
+            self.send_optional(json!({
+                "command": ["set_property", "volume", vol.clamp(0.0, 100.0)]
+            }))
+            .await;
+            tokio::time::sleep(step_dur).await;
+        }
+    }
+
+    pub async fn set_equalizer(&self, enabled: bool, gains: &[f64]) {
+        let filter = build_equalizer_filter(enabled, gains);
+        if let Ok(mut guard) = self.equalizer_filter.lock() {
+            *guard = Some(filter.clone());
+        }
+        let arg = if filter.is_empty() { "" } else { &filter };
+        self.send_optional(json!({
+            "command": ["set_property", "af", arg]
+        }))
+        .await;
+    }
+
     pub async fn set_pause(&self, paused: bool) {
+        let current_paused = self.state.lock().map(|state| state.paused).unwrap_or(false);
+        if current_paused == paused {
+            return;
+        }
         if let Ok(mut state) = self.state.lock() {
             if state.current_track_id.is_none() {
                 return;
             }
             state.paused = paused;
         }
-        self.send_optional(json!({ "command": ["set_property", "pause", paused] }))
-            .await;
+
+        let vol = self.volume.lock().map(|v| *v).unwrap_or(80.0);
+        if paused {
+            if vol > 5.0 {
+                self.fade_volume_ipc(vol, 0.0, 75).await;
+            }
+            self.send_optional(json!({ "command": ["set_property", "pause", true] }))
+                .await;
+            self.send_optional(json!({ "command": ["set_property", "volume", vol] }))
+                .await;
+        } else {
+            self.send_optional(json!({ "command": ["set_property", "volume", 0.0] }))
+                .await;
+            self.send_optional(json!({ "command": ["set_property", "pause", false] }))
+                .await;
+            if vol > 5.0 {
+                self.fade_volume_ipc(0.0, vol, 75).await;
+            } else {
+                self.send_optional(json!({ "command": ["set_property", "volume", vol] }))
+                    .await;
+            }
+        }
+
         self.emit_state(true);
     }
 
@@ -456,6 +524,16 @@ impl PlayerHandle {
             let _ = tx.send(json!({
                 "command": ["observe_property", id, property]
             }));
+        }
+
+        if let Ok(guard) = self.equalizer_filter.lock() {
+            if let Some(ref filter) = *guard {
+                if !filter.is_empty() {
+                    let _ = tx.send(json!({
+                        "command": ["set_property", "af", filter]
+                    }));
+                }
+            }
         }
 
         log::info!("mpv started ({mpv})");
@@ -914,6 +992,23 @@ mod job_object {
     }
 }
 
+pub fn build_equalizer_filter(enabled: bool, gains: &[f64]) -> String {
+    if !enabled || gains.is_empty() || gains.iter().all(|&g| g.abs() < 0.05) {
+        return String::new();
+    }
+    let freqs = [31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+    let parts: Vec<String> = freqs
+        .iter()
+        .zip(gains.iter())
+        .filter(|(_, &g)| g.abs() >= 0.1)
+        .map(|(f, g)| format!("equalizer=f={}:t=o:w=1:g={:.1}", f, g.clamp(-12.0, 12.0)))
+        .collect();
+    if parts.is_empty() {
+        return String::new();
+    }
+    format!("lavfi=[{}]", parts.join(","))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -928,5 +1023,22 @@ mod tests {
         {
             assert!(p1.starts_with(r"\\.\pipe\vibecast-mpv-"));
         }
+    }
+
+    #[test]
+    fn test_build_equalizer_filter() {
+        // Disabled returns empty string
+        assert_eq!(build_equalizer_filter(false, &[3.0; 10]), "");
+
+        // All zeroes returns empty string
+        assert_eq!(build_equalizer_filter(true, &[0.0; 10]), "");
+
+        // Gains applied correctly
+        let gains = vec![4.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0];
+        let filter = build_equalizer_filter(true, &gains);
+        assert!(filter.starts_with("lavfi=["));
+        assert!(filter.contains("equalizer=f=31:t=o:w=1:g=4.0"));
+        assert!(filter.contains("equalizer=f=16000:t=o:w=1:g=2.0"));
+        assert!(!filter.contains("f=125:"));
     }
 }

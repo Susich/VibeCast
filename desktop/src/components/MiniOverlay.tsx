@@ -160,6 +160,13 @@ export function MiniOverlay() {
     }
   };
 
+  const handleVolumeWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const step = 3;
+    const delta = e.deltaY < 0 ? step : -step;
+    setVolume(Math.max(0, Math.min(100, Math.round(player.volume + delta))));
+  };
+
   const handleSeekClick = (e: MouseEvent<HTMLDivElement>) => {
     if (!player.duration || player.duration <= 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -438,7 +445,7 @@ export function MiniOverlay() {
           </button>
         </div>
 
-        <div className="mini-volume">
+        <div className="mini-volume" onWheel={handleVolumeWheel}>
           <button
             className="icon-button compact ghost"
             onClick={handleMuteToggle}
@@ -458,6 +465,7 @@ export function MiniOverlay() {
               { "--range-progress": `${player.volume}%` } as CSSProperties
             }
             onChange={(e) => setVolume(Number(e.target.value))}
+            onWheel={handleVolumeWheel}
             aria-label="Громкость"
           />
           <span className="mini-volume-pct">{Math.round(player.volume)}%</span>
