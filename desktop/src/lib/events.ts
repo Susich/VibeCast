@@ -151,6 +151,9 @@ export function bindEvents(): void {
         break;
       }
       case "toggle_overlay":
+        if (document.hidden && !store.isOverlay) {
+          break;
+        }
         await store.toggleOverlay();
         break;
     }
