@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { formatTime } from "../lib/format";
@@ -47,6 +48,29 @@ function TrackContextMenu({
   const deleteCachedTrack = useStore((s) => s.deleteCachedTrack);
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ x: number; y: number }>({
+    x: state.x,
+    y: state.y,
+  });
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const pad = 10;
+    let x = state.x;
+    let y = state.y;
+
+    // If menu overflows the right edge, position it to the left of the click
+    if (x + rect.width > window.innerWidth - pad) {
+      x = Math.max(pad, x - rect.width);
+    }
+    // If menu overflows the bottom edge, position it upwards or clamp
+    if (y + rect.height > window.innerHeight - pad) {
+      y = Math.max(pad, window.innerHeight - rect.height - pad);
+    }
+    setCoords({ x, y });
+  }, [state.x, state.y]);
 
   useEffect(() => {
     const handleDown = (e: MouseEvent) => {
@@ -57,26 +81,29 @@ function TrackContextMenu({
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
+    const handleScroll = (e: Event) => {
+      if (menuRef.current && menuRef.current.contains(e.target as Node)) return;
+      onClose();
+    };
     window.addEventListener("pointerdown", handleDown);
     window.addEventListener("keydown", handleKey);
+    window.addEventListener("wheel", handleScroll, { passive: true });
     return () => {
       window.removeEventListener("pointerdown", handleDown);
       window.removeEventListener("keydown", handleKey);
+      window.removeEventListener("wheel", handleScroll);
     };
   }, [onClose]);
 
-  const x = Math.min(state.x, window.innerWidth - 230);
-  const y = Math.min(state.y, window.innerHeight - 250);
-
-  return (
+  return createPortal(
     <div
       ref={menuRef}
-      className="custom-dropdown-menu track-context-menu menu-enter"
+      className="track-context-menu menu-enter"
       style={{
         position: "fixed",
-        left: x,
-        top: y,
-        zIndex: 9999,
+        left: coords.x,
+        top: coords.y,
+        zIndex: 99999,
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -139,7 +166,8 @@ function TrackContextMenu({
           <span>Сохранить в кэш</span>
         </button>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -373,6 +401,69 @@ export function TrackList() {
   useEffect(() => {
     parentRef.current?.scrollTo({ top: 0 });
   }, [search, sort, artist, album]);
+
+  const scrollToCurrentTrack = (smooth = true) => {
+    const currentId = useStore.getState().player.currentTrackId;
+    if (!currentId || tracks.length === 0) return;
+    const index = tracks.findIndex((t) => t.id === currentId);
+    if (index !== -1) {
+      try {
+        virtualizer.scrollToIndex(index, {
+          align: "center",
+          behavior: smooth ? "smooth" : "auto",
+        });
+      } catch {
+        const targetScroll = Math.max(0, index * 56 - (parentRef.current?.clientHeight ?? 400) / 2);
+        parentRef.current?.scrollTo({
+          top: targetScroll,
+          behavior: smooth ? "smooth" : "auto",
+        });
+      }
+    }
+  };
+
+  // 1. Initial scroll to active track when the list loads or view switches
+  const hasInitiallyScrolledRef = useRef(false);
+  useEffect(() => {
+    if (!hasInitiallyScrolledRef.current && tracks.length > 0 && player.currentTrackId) {
+      hasInitiallyScrolledRef.current = true;
+      const timer = setTimeout(() => {
+        scrollToCurrentTrack(false);
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [tracks.length, player.currentTrackId]);
+
+  // 2. Scroll to active track when the app window is restored, unminimized, or focused
+  useEffect(() => {
+    let lastScrollTime = 0;
+    const handleRestore = () => {
+      const now = Date.now();
+      if (now - lastScrollTime < 400) return;
+      lastScrollTime = now;
+      setTimeout(() => {
+        scrollToCurrentTrack(true);
+      }, 70);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        handleRestore();
+      }
+    };
+
+    window.addEventListener("vibecast-window-restored", handleRestore);
+    window.addEventListener("vibecast-scroll-to-current", () => scrollToCurrentTrack(true));
+    window.addEventListener("focus", handleRestore);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("vibecast-window-restored", handleRestore);
+      window.removeEventListener("vibecast-scroll-to-current", () => scrollToCurrentTrack(true));
+      window.removeEventListener("focus", handleRestore);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [tracks]);
 
   const handleOpenMenu = (track: TrackRow, e: React.MouseEvent) => {
     setContextMenu({

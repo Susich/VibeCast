@@ -64,7 +64,16 @@ export function PlayerBar() {
 
   return (
     <footer className="player-bar">
-      <div className="now-playing">
+      <div
+        className="now-playing"
+        style={{ cursor: current ? "pointer" : "default" }}
+        title={current ? "Нажмите, чтобы показать играющий трек в списке" : undefined}
+        onClick={() => {
+          if (current) {
+            window.dispatchEvent(new CustomEvent("vibecast-scroll-to-current"));
+          }
+        }}
+      >
         {current ? (
           <Cover trackId={current} title={player.album ?? player.title ?? ""} size={54} />
         ) : (

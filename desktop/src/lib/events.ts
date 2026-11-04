@@ -22,6 +22,10 @@ export function bindEvents(): void {
     useStore.getState().onPlayerState(player);
   });
 
+  void listen<void>("window://restored", () => {
+    window.dispatchEvent(new CustomEvent("vibecast-window-restored"));
+  });
+
   void listen<void>("player://tray-next", () => {
     void useStore.getState().next();
   });

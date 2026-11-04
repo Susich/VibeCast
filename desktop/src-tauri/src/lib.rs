@@ -77,6 +77,7 @@ pub fn run() {
                                 let _ = w.show();
                                 let _ = w.unminimize();
                                 let _ = w.set_focus();
+                                let _ = app.emit("window://restored", ());
                             }
                         }
                         "quit" => {
@@ -96,6 +97,7 @@ pub fn run() {
                                 let _ = w.show();
                                 let _ = w.unminimize();
                                 let _ = w.set_focus();
+                                let _ = app.emit("window://restored", ());
                             }
                         }
                     })
@@ -105,16 +107,22 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let app = window.app_handle();
-                let minimize = app
-                    .try_state::<AppState>()
-                    .map(|s| s.settings().minimize_to_tray)
-                    .unwrap_or(true);
-                if minimize {
-                    api.prevent_close();
-                    let _ = window.hide();
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    let app = window.app_handle();
+                    let minimize = app
+                        .try_state::<AppState>()
+                        .map(|s| s.settings().minimize_to_tray)
+                        .unwrap_or(true);
+                    if minimize {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
+                tauri::WindowEvent::Focused(true) => {
+                    let _ = window.emit("window://restored", ());
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![

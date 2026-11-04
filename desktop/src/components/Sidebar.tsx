@@ -95,16 +95,6 @@ export function Sidebar() {
           {stats.albums > 0 && <em>{stats.albums}</em>}
         </button>
       </nav>
-
-      {/* Spacer to push footer to bottom */}
-      <div className="sidebar-spacer" />
-
-      {/* Sleek Minimal Footer */}
-      <div className="sidebar-foot">
-        <span>VibeCast</span>
-        <span className="foot-dot" />
-        <span>v0.2.10</span>
-      </div>
     </aside>
   );
 }

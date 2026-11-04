@@ -1172,7 +1172,7 @@ input::placeholder {
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -1355,9 +1355,9 @@ input::placeholder {
 .track-header,
 .track-row {
   display: grid;
-  grid-template-columns: 46px minmax(180px, 2.2fr) minmax(110px, 1.2fr) minmax(100px, 1fr) 54px 112px;
+  grid-template-columns: 46px minmax(180px, 2.2fr) minmax(110px, 1.2fr) minmax(100px, 1fr) 58px 112px;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
 .track-header {
@@ -1521,7 +1521,7 @@ input::placeholder {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  padding-right: 4px;
+  padding-right: 6px;
 }
 
 .track-cache {
@@ -4553,7 +4553,11 @@ body.is-overlay #root,
 
 /* Track context menu */
 .track-context-menu {
+  position: fixed !important;
+  z-index: 9999;
   min-width: 220px;
+  right: auto !important;
+  bottom: auto !important;
   padding: 6px;
   display: flex;
   flex-direction: column;
