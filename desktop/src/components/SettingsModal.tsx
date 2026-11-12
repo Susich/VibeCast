@@ -751,12 +751,12 @@ export function SettingsModal() {
               <section className="settings-section">
                 <div className="section-title">
                   <span>Обновления</span>
-                  <span className="muted">v0.2.13</span>
+                  <span className="muted">v0.2.14</span>
                 </div>
                 <div className="update-box">
                   <div className="update-status-row">
                     <div>
-                      <b>Версия приложения: v0.2.13</b>
+                      <b>Версия приложения: v0.2.14</b>
                       <p className="muted" style={{ margin: "4px 0 0 0", fontSize: 13 }}>
                         Автоматическая проверка свежих релизов с GitHub
                       </p>
@@ -824,7 +824,7 @@ export function SettingsModal() {
 
               <section className="settings-section about-section">
                 <div>
-                  <b>VibeCast 0.2.13</b>
+                  <b>VibeCast 0.2.14</b>
                   <small>Android → Windows / Linux / macOS · HTTP в локальной сети</small>
                 </div>
                 <span className="about-badge">MVP</span>
