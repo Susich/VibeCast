@@ -1,55 +1,61 @@
 package com.vibecast.app.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import com.vibecast.app.data.ThemePreferences
 
-// Modern Deep Cyber/Glass Theme Palette
-val VibeBg = Color(0xFF090D14)
-val VibeBgGradientTop = Color(0xFF0E1522)
-val VibeBgGradientBottom = Color(0xFF06090E)
+val LocalVibeTheme = staticCompositionLocalOf { VibeThemes.defaultTheme }
 
-val VibeSurface = Color(0xFF111823)
-val VibeSurfaceHigh = Color(0xFF172231)
-val VibeSurfaceBorder = Color(0xFF223143)
-val VibeGlassBorder = Color(0x334ADE80)
+// Dynamic theme colors accessible anywhere inside Composables
+val VibeBg: Color @Composable get() = LocalVibeTheme.current.bgPrimary
+val VibeBgGradientTop: Color @Composable get() = LocalVibeTheme.current.bgGradientTop
+val VibeBgGradientBottom: Color @Composable get() = LocalVibeTheme.current.bgGradientBottom
 
-val VibeGreen = Color(0xFF4ADE80)
-val VibeGreenDark = Color(0xFF16A34A)
-val VibeCyan = Color(0xFF22D3EE)
-val VibeCyanDark = Color(0xFF0891B2)
+val VibeSurface: Color @Composable get() = LocalVibeTheme.current.bgCard
+val VibeSurfaceHigh: Color @Composable get() = LocalVibeTheme.current.bgCardHigh
+val VibeSurfaceBorder: Color @Composable get() = LocalVibeTheme.current.border
+val VibeGlassBorder: Color @Composable get() = LocalVibeTheme.current.accent.copy(alpha = 0.25f)
 
-val VibeText = Color(0xFFF1F5F9)
-val VibeMuted = Color(0xFF94A3B8)
-val VibeTextDim = Color(0xFF64748B)
+val VibeGreen: Color @Composable get() = LocalVibeTheme.current.accent
+val VibeGreenDark: Color @Composable get() = LocalVibeTheme.current.accentDark
+val VibeCyan: Color @Composable get() = LocalVibeTheme.current.accentHover
+val VibeCyanDark: Color @Composable get() = LocalVibeTheme.current.accentDark
+
+val VibeText: Color @Composable get() = LocalVibeTheme.current.textMain
+val VibeMuted: Color @Composable get() = LocalVibeTheme.current.textMuted
+val VibeTextDim: Color @Composable get() = LocalVibeTheme.current.textDim
 
 val VibeRed = Color(0xFFF87171)
 val VibeAmber = Color(0xFFFBBF24)
 
-private val VibeColors = darkColorScheme(
-    primary = VibeGreen,
-    onPrimary = Color(0xFF06210F),
-    primaryContainer = VibeGreenDark,
-    onPrimaryContainer = Color(0xFFE6FFEF),
-    secondary = VibeCyan,
-    onSecondary = Color(0xFF052027),
-    background = VibeBg,
-    onBackground = VibeText,
-    surface = VibeSurface,
-    onSurface = VibeText,
-    surfaceVariant = VibeSurfaceHigh,
-    onSurfaceVariant = VibeMuted,
-    error = VibeRed,
-    onError = Color(0xFF2A0606),
-    outline = VibeSurfaceBorder,
-)
-
 @Composable
 fun VibeCastTheme(
-    @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = isSystemInDarkTheme(),
+    theme: VibeTheme = ThemePreferences.currentTheme,
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(colorScheme = VibeColors, content = content)
+    val colors = darkColorScheme(
+        primary = theme.accent,
+        onPrimary = Color(0xFF06210F),
+        primaryContainer = theme.accentDark,
+        onPrimaryContainer = Color(0xFFE6FFEF),
+        secondary = theme.accentHover,
+        onSecondary = Color(0xFF052027),
+        background = theme.bgPrimary,
+        onBackground = theme.textMain,
+        surface = theme.bgCard,
+        onSurface = theme.textMain,
+        surfaceVariant = theme.bgCardHigh,
+        onSurfaceVariant = theme.textMuted,
+        error = VibeRed,
+        onError = Color(0xFF2A0606),
+        outline = theme.border,
+    )
+
+    CompositionLocalProvider(LocalVibeTheme provides theme) {
+        MaterialTheme(colorScheme = colors, content = content)
+    }
 }

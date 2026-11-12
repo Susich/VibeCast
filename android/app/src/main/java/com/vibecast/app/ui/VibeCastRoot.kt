@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -124,6 +125,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import com.vibecast.app.data.ThemePreferences
 import com.vibecast.app.ui.theme.VibeAmber
 import com.vibecast.app.ui.theme.VibeBg
 import com.vibecast.app.ui.theme.VibeBgGradientBottom
@@ -133,8 +135,11 @@ import com.vibecast.app.ui.theme.VibeGreen
 import com.vibecast.app.ui.theme.VibeMuted
 import com.vibecast.app.ui.theme.VibeRed
 import com.vibecast.app.ui.theme.VibeSurface
+import com.vibecast.app.ui.theme.VibeSurfaceBorder
 import com.vibecast.app.ui.theme.VibeSurfaceHigh
 import com.vibecast.app.ui.theme.VibeText
+import com.vibecast.app.ui.theme.VibeTheme
+import com.vibecast.app.ui.theme.VibeThemes
 import com.vibecast.shared.PlayerStateDto
 import com.vibecast.shared.RemoteCommandDto
 import com.vibecast.shared.TrackDto
@@ -144,7 +149,7 @@ import kotlinx.coroutines.launch
 private enum class NavTab(val title: String, val icon: ImageVector) {
     PLAYER("Пульт", Icons.Rounded.Headphones),
     SERVER("Сервер", Icons.Rounded.Sensors),
-    SHARE("Поделиться", Icons.Rounded.Share),
+    SHARE("Ещё", Icons.Rounded.Palette),
 }
 
 @Composable
@@ -304,9 +309,9 @@ private fun VibeBottomNav(
     onTabSelected: (NavTab) -> Unit,
 ) {
     Surface(
-        color = Color(0xF20E1520),
+        color = VibeSurface.copy(alpha = 0.95f),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
+        border = BorderStroke(1.dp, VibeSurfaceBorder.copy(alpha = 0.6f)),
         tonalElevation = 8.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -337,7 +342,7 @@ private fun VibeBottomNav(
                         )
                     },
                     colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = Color(0x284ADE80),
+                        indicatorColor = VibeGreen.copy(alpha = 0.16f),
                     ),
                 )
             }
@@ -358,6 +363,7 @@ private fun RemotePlayerScreen(
     var currentSort by remember { mutableStateOf(TrackSort.TITLE_ASC) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
 
     val repo = ServerRuntime.repository
     val tracks = remember(searchQuery, currentSort, repo, runtimeState.version, runtimeState.trackCount) {
@@ -366,6 +372,10 @@ private fun RemotePlayerScreen(
 
     val selectedFolders = remember(runtimeState.version) {
         repo?.getSelectedFolders() ?: emptySet()
+    }
+
+    if (showThemeDialog) {
+        ThemeSelectionDialog(onDismiss = { showThemeDialog = false })
     }
 
     if (showFolderDialog && repo != null) {
@@ -423,7 +433,7 @@ private fun RemotePlayerScreen(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(if (isPcActive) Color(0x284ADE80) else Color(0x1F94A3B8))
+                                .background(if (isPcActive) VibeGreen.copy(alpha = 0.16f) else Color(0x1F94A3B8))
                                 .padding(horizontal = 7.dp, vertical = 2.dp),
                         ) {
                             Text(
@@ -438,6 +448,22 @@ private fun RemotePlayerScreen(
                         "Воспроизведение музыки на компьютере по Wi-Fi",
                         color = VibeMuted,
                         fontSize = 12.sp,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                IconButton(
+                    onClick = { showThemeDialog = true },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(VibeSurfaceHigh)
+                        .border(1.dp, VibeSurfaceBorder, CircleShape),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Palette,
+                        contentDescription = "Темы оформления",
+                        tint = VibeGreen,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -521,7 +547,7 @@ private fun RemotePlayerScreen(
                 Surface(
                     color = VibeSurfaceHigh,
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.border(1.dp, Color(0xFF223040), RoundedCornerShape(8.dp)),
+                    modifier = Modifier.border(1.dp, VibeSurfaceBorder, RoundedCornerShape(8.dp)),
                 ) {
                     Text(
                         text = "${runtimeState.trackCount} треков",
@@ -574,7 +600,7 @@ private fun RemotePlayerScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = VibeGreen,
-                    unfocusedBorderColor = Color(0xFF223040),
+                    unfocusedBorderColor = VibeSurfaceBorder,
                     focusedContainerColor = VibeSurface,
                     unfocusedContainerColor = VibeSurface,
                     focusedTextColor = VibeText,
@@ -784,7 +810,7 @@ private fun RemotePlayerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 16.dp)
-                        .border(1.dp, Color(0xFF223040), RoundedCornerShape(16.dp)),
+                        .border(1.dp, VibeSurfaceBorder, RoundedCornerShape(16.dp)),
                 ) {
                     Column(
                         modifier = Modifier
@@ -854,8 +880,8 @@ private fun NowPlayingCard(
             .border(
                 BorderStroke(
                     1.dp,
-                    if (isPlaying) Brush.linearGradient(listOf(Color(0x554ADE80), Color(0x2222D3EE), Color(0x11FFFFFF)))
-                    else Brush.linearGradient(listOf(Color(0xFF223143), Color(0xFF162230))),
+                    if (isPlaying) Brush.linearGradient(listOf(VibeGreen.copy(alpha = 0.4f), VibeCyan.copy(alpha = 0.2f), Color(0x11FFFFFF)))
+                    else Brush.linearGradient(listOf(VibeSurfaceBorder, VibeSurface)),
                 ),
                 RoundedCornerShape(24.dp),
             ),
@@ -873,7 +899,7 @@ private fun NowPlayingCard(
                                 BorderStroke(
                                     1.5.dp,
                                     if (isPlaying) Brush.linearGradient(listOf(VibeGreen, VibeCyan))
-                                    else Brush.linearGradient(listOf(Color(0xFF223143), Color(0xFF1A2636))),
+                                    else Brush.linearGradient(listOf(VibeSurfaceBorder, VibeSurfaceHigh)),
                                 ),
                                 RoundedCornerShape(16.dp),
                             ),
@@ -1054,7 +1080,7 @@ private fun NowPlayingCard(
                 }
 
                 Spacer(Modifier.height(14.dp))
-                HorizontalDivider(color = Color(0xFF223143))
+                HorizontalDivider(color = VibeSurfaceBorder)
                 Spacer(Modifier.height(12.dp))
 
                 // Volume Slider (Vector Icons, NO EMOJIS)
@@ -1087,14 +1113,14 @@ private fun NowPlayingCard(
                         colors = SliderDefaults.colors(
                             thumbColor = VibeGreen,
                             activeTrackColor = VibeGreen,
-                            inactiveTrackColor = Color(0xFF1E2A38),
+                            inactiveTrackColor = VibeSurfaceBorder,
                         ),
                     )
                     Spacer(Modifier.width(8.dp))
                     Surface(
                         color = VibeSurfaceHigh,
                         shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color(0xFF223143)),
+                        border = BorderStroke(1.dp, VibeSurfaceBorder),
                     ) {
                         Text(
                             "${volumeValue.toInt()}%",
@@ -1181,7 +1207,7 @@ private fun TrackItem(
 
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (isPlaying) Color(0xFF14291F) else VibeSurface,
+            containerColor = if (isPlaying) VibeGreen.copy(alpha = 0.12f) else VibeSurface,
         ),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier
@@ -1190,7 +1216,7 @@ private fun TrackItem(
             .border(
                 BorderStroke(
                     1.dp,
-                    if (isPlaying) VibeGreen.copy(alpha = 0.7f) else Color(0xFF1C2735),
+                    if (isPlaying) VibeGreen.copy(alpha = 0.7f) else VibeSurfaceBorder,
                 ),
                 RoundedCornerShape(16.dp),
             )
@@ -1204,10 +1230,10 @@ private fun TrackItem(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (isPlaying) Color(0x334ADE80) else Color(0xFF182331))
+                    .background(if (isPlaying) VibeGreen.copy(alpha = 0.2f) else VibeSurfaceHigh)
                     .border(
                         1.dp,
-                        if (isPlaying) VibeGreen.copy(alpha = 0.4f) else Color(0xFF223143),
+                        if (isPlaying) VibeGreen.copy(alpha = 0.4f) else VibeSurfaceBorder,
                         RoundedCornerShape(12.dp),
                     ),
                 contentAlignment = Alignment.Center,
@@ -1244,9 +1270,9 @@ private fun TrackItem(
             }
             Spacer(Modifier.width(10.dp))
             Surface(
-                color = if (isPlaying) Color(0x304ADE80) else Color(0xFF182331),
+                color = if (isPlaying) VibeGreen.copy(alpha = 0.18f) else VibeSurfaceHigh,
                 shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, if (isPlaying) VibeGreen.copy(alpha = 0.3f) else Color(0xFF223143)),
+                border = BorderStroke(1.dp, if (isPlaying) VibeGreen.copy(alpha = 0.3f) else VibeSurfaceBorder),
             ) {
                 Text(
                     formatTime(track.durationMs / 1000.0),
@@ -1322,7 +1348,7 @@ private fun FolderSelectionDialog(
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFF223040), modifier = Modifier.padding(vertical = 6.dp))
+                HorizontalDivider(color = VibeSurfaceBorder, modifier = Modifier.padding(vertical = 6.dp))
 
                 if (loading) {
                     Box(modifier = Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
@@ -1410,6 +1436,217 @@ private fun FolderSelectionDialog(
 }
 
 @Composable
+private fun ThemeItemView(
+    theme: VibeTheme,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = theme.bgCard),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(
+            if (isSelected) 2.dp else 1.dp,
+            if (isSelected) theme.accent else theme.border,
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
+            ) {
+                // Swatches preview
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy((-6).dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(theme.bgPrimary)
+                            .border(1.dp, theme.border, CircleShape),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(theme.accent)
+                            .border(1.dp, Color(0x33FFFFFF), CircleShape),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(theme.accentHover)
+                            .border(1.dp, Color(0x33FFFFFF), CircleShape),
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text(
+                        text = theme.name,
+                        color = theme.textMain,
+                        fontSize = 14.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    )
+                    Text(
+                        text = theme.id.replaceFirstChar { it.uppercase() },
+                        color = theme.textMuted,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(theme.accent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Check,
+                        contentDescription = "Выбрано",
+                        tint = theme.bgPrimary,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeSelectionCard() {
+    val context = LocalContext.current
+    val currentTheme = ThemePreferences.currentTheme
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = VibeSurface),
+        shape = RoundedCornerShape(22.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, VibeSurfaceBorder, RoundedCornerShape(22.dp)),
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Brush.linearGradient(listOf(VibeGreen, VibeCyan))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Palette,
+                        contentDescription = null,
+                        tint = Color(0xFF06210F),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "Тема оформления",
+                        color = VibeText,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp,
+                    )
+                    Text(
+                        "11 тем, как на ПК (сейчас: ${currentTheme.name})",
+                        color = VibeMuted,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                VibeThemes.allThemes.forEach { theme ->
+                    ThemeItemView(
+                        theme = theme,
+                        isSelected = theme.id == currentTheme.id,
+                        onClick = {
+                            ThemePreferences.setTheme(context, theme)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeSelectionDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val currentTheme = ThemePreferences.currentTheme
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VibeSurface,
+        shape = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Palette,
+                    contentDescription = null,
+                    tint = VibeGreen,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text("Тема оформления", color = VibeText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Выберите тему интерфейса. Оформление идентично темам на ПК.",
+                    color = VibeMuted,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(VibeThemes.allThemes) { theme ->
+                        ThemeItemView(
+                            theme = theme,
+                            isSelected = theme.id == currentTheme.id,
+                            onClick = {
+                                ThemePreferences.setTheme(context, theme)
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = VibeGreen),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Text("Готово", color = Color(0xFF06210F), fontWeight = FontWeight.Bold)
+            }
+        },
+    )
+}
+
+@Composable
 private fun ShareAndUpdatesScreen() {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -1443,11 +1680,11 @@ private fun ShareAndUpdatesScreen() {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
+                    .background(Brush.linearGradient(listOf(VibeGreen, VibeCyan))),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Share,
+                    imageVector = Icons.Rounded.Palette,
                     contentDescription = null,
                     tint = Color(0xFF06210F),
                     modifier = Modifier.size(22.dp),
@@ -1455,12 +1692,17 @@ private fun ShareAndUpdatesScreen() {
             }
             Spacer(Modifier.width(12.dp))
             Column {
-                Text("Поделиться приложением", color = VibeText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("QR-код на репозиторий и обновления", color = VibeMuted, fontSize = 12.sp)
+                Text("Оформление и инфо", color = VibeText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Темы интерфейса, QR-код и обновления", color = VibeMuted, fontSize = 12.sp)
             }
         }
 
         Spacer(Modifier.height(20.dp))
+
+        // Themes Card
+        ThemeSelectionCard()
+
+        Spacer(Modifier.height(18.dp))
 
         // QR Code Card
         Card(
@@ -1468,7 +1710,7 @@ private fun ShareAndUpdatesScreen() {
             shape = RoundedCornerShape(22.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color(0xFF223040), RoundedCornerShape(22.dp)),
+                .border(1.dp, VibeSurfaceBorder, RoundedCornerShape(22.dp)),
         ) {
             Column(
                 modifier = Modifier.padding(22.dp),
@@ -1580,7 +1822,7 @@ private fun ShareAndUpdatesScreen() {
             shape = RoundedCornerShape(22.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color(0xFF223040), RoundedCornerShape(22.dp)),
+                .border(1.dp, VibeSurfaceBorder, RoundedCornerShape(22.dp)),
         ) {
             Column(Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1727,7 +1969,7 @@ private fun PermissionScreen(onRequest: () -> Unit, onOpenSettings: () -> Unit) 
             modifier = Modifier
                 .size(88.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
+                .background(Brush.linearGradient(listOf(VibeGreen, VibeCyan))),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -1755,7 +1997,7 @@ private fun PermissionScreen(onRequest: () -> Unit, onOpenSettings: () -> Unit) 
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
             shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF223040), RoundedCornerShape(24.dp)),
+            modifier = Modifier.fillMaxWidth().border(1.dp, VibeSurfaceBorder, RoundedCornerShape(24.dp)),
         ) {
             Column(Modifier.padding(22.dp)) {
                 Text("Нужен доступ к аудио", color = VibeText, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
@@ -1823,18 +2065,27 @@ private fun StatusScreen(
 ) {
     LaunchedEffect(Unit) { onRefreshPermission() }
 
+    var showThemeDialog by remember { mutableStateOf(false) }
+
+    if (showThemeDialog) {
+        ThemeSelectionDialog(onDismiss = { showThemeDialog = false })
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 24.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Box(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Brush.linearGradient(listOf(VibeGreen, Color(0xFF22D3EE)))),
+                    .background(Brush.linearGradient(listOf(VibeGreen, VibeCyan))),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -1845,9 +2096,25 @@ private fun StatusScreen(
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text("VibeCast Сервер", color = VibeText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
                 Text("Раздача медиатеки для приложения на ПК", color = VibeMuted, fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = { showThemeDialog = true },
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(VibeSurfaceHigh)
+                    .border(1.dp, VibeSurfaceBorder, CircleShape),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Palette,
+                    contentDescription = "Темы оформления",
+                    tint = VibeGreen,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
 
@@ -1874,7 +2141,7 @@ private fun StatusScreen(
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
             shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF223040), RoundedCornerShape(20.dp)),
+            modifier = Modifier.fillMaxWidth().border(1.dp, VibeSurfaceBorder, RoundedCornerShape(20.dp)),
         ) {
             Column(Modifier.padding(18.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1940,7 +2207,7 @@ private fun StatusScreen(
         Card(
             colors = CardDefaults.cardColors(containerColor = VibeSurface),
             shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF223040), RoundedCornerShape(20.dp)),
+            modifier = Modifier.fillMaxWidth().border(1.dp, VibeSurfaceBorder, RoundedCornerShape(20.dp)),
         ) {
             Column(Modifier.padding(18.dp)) {
                 Text("Статус фоновой работы", color = VibeText, fontWeight = FontWeight.SemiBold)
@@ -1982,8 +2249,8 @@ private fun StatusCard(state: ServerRuntime.State) {
             .border(
                 BorderStroke(
                     1.dp,
-                    if (isOnline) Brush.linearGradient(listOf(Color(0x554ADE80), Color(0x2222D3EE), Color(0x11FFFFFF)))
-                    else Brush.linearGradient(listOf(Color(0xFF223143), Color(0xFF162230))),
+                    if (isOnline) Brush.linearGradient(listOf(VibeGreen.copy(alpha = 0.4f), VibeCyan.copy(alpha = 0.2f), Color(0x11FFFFFF)))
+                    else Brush.linearGradient(listOf(VibeSurfaceBorder, VibeSurface)),
                 ),
                 RoundedCornerShape(24.dp),
             ),
@@ -1998,7 +2265,7 @@ private fun StatusCard(state: ServerRuntime.State) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x284ADE80))
+                            .background(VibeGreen.copy(alpha = 0.16f))
                             .border(1.dp, VibeGreen.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                             .padding(horizontal = 8.dp, vertical = 3.dp),
                     ) {
@@ -2054,7 +2321,7 @@ private fun MetricTile(
     Surface(
         color = VibeSurfaceHigh,
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, Color(0xFF223143)),
+        border = BorderStroke(1.dp, VibeSurfaceBorder),
         modifier = modifier,
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -2097,7 +2364,7 @@ private fun TokenCard(token: String) {
     Surface(
         color = VibeSurfaceHigh,
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, Color(0xFF223143)),
+        border = BorderStroke(1.dp, VibeSurfaceBorder),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -2122,7 +2389,7 @@ private fun TokenCard(token: String) {
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = { revealed = !revealed },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF223143)),
+                    colors = ButtonDefaults.buttonColors(containerColor = VibeSurface),
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     modifier = Modifier.height(32.dp),
@@ -2135,7 +2402,7 @@ private fun TokenCard(token: String) {
                         clipboard.setText(AnnotatedString(token))
                         copied = true
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (copied) Color(0xFF143825) else Color(0xFF223143)),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (copied) VibeGreen.copy(alpha = 0.25f) else VibeSurface),
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     modifier = Modifier.height(32.dp),
