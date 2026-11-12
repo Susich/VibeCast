@@ -708,6 +708,14 @@ pub async fn set_overlay_mode(
         let _ = window.set_always_on_top(true);
         let _ = window.set_resizable(true);
 
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(hwnd) = window.hwnd() {
+                win32_overlay::set_overlay_window_styles(hwnd.0 as *mut std::ffi::c_void, true);
+                win32_overlay::bring_to_topmost(hwnd.0 as *mut std::ffi::c_void);
+            }
+        }
+
         let monitor = window.current_monitor().ok().flatten();
         let scale = monitor.as_ref().map(|m| m.scale_factor()).unwrap_or(1.0);
         let mon_pos = monitor
@@ -780,6 +788,13 @@ pub async fn set_overlay_mode(
         let _ = window.set_size(tauri::LogicalSize::new(390.0, 185.0));
         let _ = window.set_position(tauri::PhysicalPosition::new(final_card_x, final_card_y));
 
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(hwnd) = window.hwnd() {
+                win32_overlay::bring_to_topmost(hwnd.0 as *mut std::ffi::c_void);
+            }
+        }
+
         let _ = state.db.set_setting("overlay_pos_x", &final_card_x.to_string());
         let _ = state.db.set_setting("overlay_pos_y", &final_card_y.to_string());
         let _ = state.db.set_setting("circle_pos_x", &circle_x.to_string());
@@ -807,6 +822,13 @@ pub async fn set_overlay_mode(
         // Immediately update DB is_overlay so any concurrent set_overlay_compact calls exit immediately
         let _ = state.db.set_setting("is_overlay", "false");
         sync_to_config_json(state.inner());
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(hwnd) = window.hwnd() {
+                win32_overlay::set_overlay_window_styles(hwnd.0 as *mut std::ffi::c_void, false);
+            }
+        }
 
         let _ = window.unmaximize();
         let _ = window.set_always_on_top(false);
@@ -870,6 +892,21 @@ pub async fn set_overlay_compact(
     }
 
     if window.is_minimized().unwrap_or(false) {
+        return Ok(());
+    }
+
+    let is_already_compact = state
+        .db
+        .get_setting("overlay_compact")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
+    // If already in the target state, never move or resize! Just ensure topmost.
+    if compact == is_already_compact {
+        #[cfg(target_os = "windows")]
+        if let Ok(hwnd) = window.hwnd() {
+            win32_overlay::bring_to_topmost(hwnd.0 as *mut _);
+        }
         return Ok(());
     }
 
@@ -943,20 +980,12 @@ pub async fn set_overlay_compact(
         let _ = state.db.set_setting("circle_pos_x", &clamped_x.to_string());
         let _ = state.db.set_setting("circle_pos_y", &clamped_y.to_string());
 
-        let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
         let _ = window.set_size(tauri::LogicalSize::new(120.0, 120.0));
+        let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
     } else {
         // EXPANDING TO CARD:
-        let circle_x = if cur_pos.x > -10000 && cur_pos.y > -10000 {
-            cur_pos.x
-        } else {
-            state.db.get_setting("circle_pos_x").and_then(|s| s.parse::<i32>().ok()).unwrap_or(cur_pos.x)
-        };
-        let circle_y = if cur_pos.y > -10000 && cur_pos.y > -10000 {
-            cur_pos.y
-        } else {
-            state.db.get_setting("circle_pos_y").and_then(|s| s.parse::<i32>().ok()).unwrap_or(cur_pos.y)
-        };
+        let circle_x = cur_pos.x;
+        let circle_y = cur_pos.y;
 
         let _ = state.db.set_setting("circle_pos_x", &circle_x.to_string());
         let _ = state.db.set_setting("circle_pos_y", &circle_y.to_string());
@@ -988,8 +1017,77 @@ pub async fn set_overlay_compact(
         let _ = window.set_position(tauri::PhysicalPosition::new(clamped_x, clamped_y));
     }
 
+    #[cfg(target_os = "windows")]
+    if let Ok(hwnd) = window.hwnd() {
+        win32_overlay::bring_to_topmost(hwnd.0 as *mut _);
+    }
+
     sync_to_config_json(state.inner());
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub mod win32_overlay {
+    use std::ffi::c_void;
+
+    pub const GWL_EXSTYLE: i32 = -20;
+    pub const WS_EX_TOPMOST: isize = 0x00000008;
+    pub const WS_EX_TOOLWINDOW: isize = 0x00000080;
+    pub const WS_EX_APPWINDOW: isize = 0x00040000;
+
+    pub const HWND_TOPMOST: *mut c_void = -1isize as *mut c_void;
+    pub const HWND_NOTOPMOST: *mut c_void = -2isize as *mut c_void;
+
+    pub const SWP_NOSIZE: u32 = 0x0001;
+    pub const SWP_NOMOVE: u32 = 0x0002;
+    pub const SWP_NOACTIVATE: u32 = 0x0010;
+    pub const SWP_SHOWWINDOW: u32 = 0x0040;
+    pub const SWP_FRAMECHANGED: u32 = 0x0020;
+
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn SetWindowPos(
+            hWnd: *mut c_void,
+            hWndInsertAfter: *mut c_void,
+            X: i32,
+            Y: i32,
+            cx: i32,
+            cy: i32,
+            uFlags: u32,
+        ) -> i32;
+        pub fn GetWindowLongPtrW(hWnd: *mut c_void, nIndex: i32) -> isize;
+        pub fn SetWindowLongPtrW(hWnd: *mut c_void, nIndex: i32, dwNewLong: isize) -> isize;
+    }
+
+    pub fn set_overlay_window_styles(hwnd_raw: *mut c_void, is_overlay: bool) {
+        unsafe {
+            let cur_style = GetWindowLongPtrW(hwnd_raw, GWL_EXSTYLE);
+            let new_style = if is_overlay {
+                (cur_style | WS_EX_TOPMOST | WS_EX_TOOLWINDOW) & !WS_EX_APPWINDOW
+            } else {
+                (cur_style & !(WS_EX_TOPMOST | WS_EX_TOOLWINDOW)) | WS_EX_APPWINDOW
+            };
+            SetWindowLongPtrW(hwnd_raw, GWL_EXSTYLE, new_style);
+            let insert_after = if is_overlay { HWND_TOPMOST } else { HWND_NOTOPMOST };
+            SetWindowPos(
+                hwnd_raw,
+                insert_after,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED | if is_overlay { SWP_NOACTIVATE | SWP_SHOWWINDOW } else { 0 },
+            );
+        }
+    }
+
+    pub fn bring_to_topmost(hwnd_raw: *mut c_void) {
+        unsafe {
+            SetWindowPos(
+                hwnd_raw,
+                HWND_TOPMOST,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            );
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -1176,6 +1274,11 @@ pub async fn start_clamped_drag(
         }
         sync_to_config_json(state.inner());
 
+        #[cfg(target_os = "windows")]
+        if let Ok(hwnd) = window.hwnd() {
+            win32_overlay::bring_to_topmost(hwnd.0 as *mut _);
+        }
+
         Ok(true)
     }
 
@@ -1350,6 +1453,12 @@ async fn remote_control_loop(app: AppHandle, generation: u64) {
                         let line: String = buffer.drain(..=newline).collect();
                         if let Some(cmd) = parse_sse_command(&line) {
                             let _ = app.emit("remote-control", cmd);
+                            #[cfg(target_os = "windows")]
+                            if let Some(w) = app.get_webview_window("main") {
+                                if let Ok(hwnd) = w.hwnd() {
+                                    win32_overlay::bring_to_topmost(hwnd.0 as *mut _);
+                                }
+                            }
                         }
                     }
                 }

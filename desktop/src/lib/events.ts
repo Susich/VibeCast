@@ -60,6 +60,9 @@ export function bindEvents(): void {
           store.setVolume(cmd.volume);
         }
         break;
+      case "shuffle":
+        store.toggleShuffle();
+        break;
       case "play_track":
         if (cmd.trackId) {
           let customQueue: TrackRow[] | undefined;

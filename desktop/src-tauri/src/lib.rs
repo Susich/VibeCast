@@ -19,6 +19,20 @@ use state::AppState;
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    #[cfg(target_os = "windows")]
+    {
+        // Disable background throttling and occlusion pausing in WebView2 so timers and
+        // overlay transitions work reliably without delay, even when games/apps are fullscreen.
+        let existing = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGS").unwrap_or_default();
+        let flags = "--disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding";
+        let combined = if existing.is_empty() {
+            flags.to_string()
+        } else {
+            format!("{} {}", existing, flags)
+        };
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGS", combined);
+    }
+
     let app = tauri::Builder::default()
         .setup(|app| {
             // The window is deliberately compact for 125%-scaled 1366x768 /
@@ -47,6 +61,31 @@ pub fn run() {
             let _ = handle.state::<AppState>().db.set_setting("overlay_compact", "false");
 
             hotkeys::start_global_hotkeys(handle.clone());
+
+            // Overlay topmost watchdog: periodically ensures the overlay stays on top
+            // of fullscreen apps, borderless games, and other topmost windows without stealing focus.
+            let watchdog_handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+                    let is_overlay = watchdog_handle
+                        .try_state::<AppState>()
+                        .and_then(|s| s.db.get_setting("is_overlay"))
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
+
+                    if is_overlay {
+                        if let Some(w) = watchdog_handle.get_webview_window("main") {
+                            if !w.is_minimized().unwrap_or(false) && w.is_visible().unwrap_or(false) {
+                                #[cfg(target_os = "windows")]
+                                if let Ok(hwnd) = w.hwnd() {
+                                    commands::win32_overlay::bring_to_topmost(hwnd.0 as *mut _);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
 
             // Setup system tray
             if let Some(icon) = app.default_window_icon().cloned() {

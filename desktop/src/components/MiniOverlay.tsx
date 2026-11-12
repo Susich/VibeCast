@@ -13,6 +13,7 @@ import {
   PauseIcon,
   PinIcon,
   PlayIcon,
+  ShuffleIcon,
   SkipBackIcon,
   SkipForwardIcon,
   VolumeIcon,
@@ -30,24 +31,34 @@ export function MiniOverlay() {
   const toggleOverlay = useStore((state) => state.toggleOverlay);
   const overlayTransition = useStore((state) => state.overlayTransition);
   const expandOnHotkey = useStore((state) => state.settings.expandOnHotkey ?? true);
+  const shuffle = useStore((state) => state.shuffle);
+  const toggleShuffle = useStore((state) => state.toggleShuffle);
 
   // Expanded = full player controls (390x185); Collapsed = compact circular bubble (120x120)
   const [expanded, setExpanded] = useState(true);
   const [isCollapsing, setIsCollapsing] = useState(false);
   const [pinned, setPinned] = useState(false);
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collapseAtRef = useRef<number | null>(null);
   const isHoveredRef = useRef(false);
+  const lastMousePosRef = useRef<{ x: number; y: number } | null>(null);
   const pinnedRef = useRef(pinned);
+  const expandedRef = useRef(expanded);
 
   useEffect(() => {
     pinnedRef.current = pinned;
   }, [pinned]);
+
+  useEffect(() => {
+    expandedRef.current = expanded;
+  }, [expanded]);
 
   const isMuted = player.volume === 0;
   const current = player.currentTrackId;
   const isPlaying = !player.paused && !!current;
 
   const clearTimer = useCallback(() => {
+    collapseAtRef.current = null;
     if (collapseTimerRef.current) {
       clearTimeout(collapseTimerRef.current);
       collapseTimerRef.current = null;
@@ -72,12 +83,20 @@ export function MiniOverlay() {
   const expandWithTimer = useCallback(
     async (durationMs = 5000) => {
       clearTimer();
-      // Ensure the Tauri window is resized and positioned FIRST before rendering expanded card
-      await call("set_overlay_compact", { compact: false }).catch(() => undefined);
-      setExpanded(true);
+      // Ensure the Tauri window is resized and positioned FIRST before rendering expanded card,
+      // but ONLY if not already expanded to prevent any window position jumps!
+      if (!expandedRef.current) {
+        await call("set_overlay_compact", { compact: false }).catch(() => undefined);
+        setExpanded(true);
+      }
       setIsCollapsing(false);
 
-      if (!pinnedRef.current && !isHoveredRef.current) {
+      if (!pinnedRef.current) {
+        // Reset hover state until user actually moves the mouse over the widget
+        isHoveredRef.current = false;
+        lastMousePosRef.current = null;
+        collapseAtRef.current = Date.now() + durationMs;
+
         collapseTimerRef.current = setTimeout(() => {
           if (!isHoveredRef.current && !pinnedRef.current) {
             collapse();
@@ -88,7 +107,24 @@ export function MiniOverlay() {
     [clearTimer, collapse],
   );
 
-  // Listen to global hotkey triggers to reveal full player (if enabled in settings)
+  // Heartbeat fallback: guarantees collapse after 5s even if setTimeout was jittered or backgrounded
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (
+        expandedRef.current &&
+        !pinnedRef.current &&
+        !isHoveredRef.current &&
+        collapseAtRef.current !== null &&
+        Date.now() >= collapseAtRef.current
+      ) {
+        collapseAtRef.current = null;
+        collapse();
+      }
+    }, 250);
+    return () => clearInterval(interval);
+  }, [collapse]);
+
+  // Listen to global hotkey / remote triggers to reveal full player (if enabled in settings)
   useEffect(() => {
     const onHotkey = (e: Event) => {
       const customEvent = e as CustomEvent<{ action: string }>;
@@ -105,6 +141,21 @@ export function MiniOverlay() {
     };
   }, [expandOnHotkey, expandWithTimer]);
 
+  // Expand with timer when track changes (e.g. queue progression, phone selection)
+  const prevTrackIdRef = useRef(player.currentTrackId);
+  useEffect(() => {
+    if (
+      prevTrackIdRef.current &&
+      player.currentTrackId &&
+      prevTrackIdRef.current !== player.currentTrackId
+    ) {
+      if (expandOnHotkey) {
+        void expandWithTimer(5000);
+      }
+    }
+    prevTrackIdRef.current = player.currentTrackId;
+  }, [player.currentTrackId, expandOnHotkey, expandWithTimer]);
+
   // Clean up any pending collapse timer on unmount
   useEffect(() => {
     return () => {
@@ -114,6 +165,7 @@ export function MiniOverlay() {
 
   // Initial mount: show big player first, then auto-collapse to circle after 5s
   useEffect(() => {
+    collapseAtRef.current = Date.now() + 5000;
     collapseTimerRef.current = setTimeout(() => {
       if (!isHoveredRef.current && !pinnedRef.current) {
         collapse();
@@ -123,19 +175,6 @@ export function MiniOverlay() {
       clearTimer();
     };
   }, [clearTimer, collapse]);
-
-  // When app is minimized (hidden), pause/clear collapse timer so we never resize while minimized
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.hidden) {
-        clearTimer();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [clearTimer]);
 
   const handleStartDrag = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -165,14 +204,24 @@ export function MiniOverlay() {
     void seek(ratio * player.duration);
   };
 
-  const onMouseEnter = () => {
-    isHoveredRef.current = true;
-    clearTimer();
+  const onMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (!lastMousePosRef.current) {
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+    const dx = Math.abs(e.clientX - lastMousePosRef.current.x);
+    const dy = Math.abs(e.clientY - lastMousePosRef.current.y);
+    // Genuine intentional mouse movement over the widget
+    if (dx > 3 || dy > 3) {
+      isHoveredRef.current = true;
+      clearTimer();
+    }
   };
 
   const onMouseLeave = () => {
     isHoveredRef.current = false;
-    if (expanded && !pinnedRef.current) {
+    lastMousePosRef.current = null;
+    if (expandedRef.current && !pinnedRef.current) {
       void expandWithTimer(5000);
     }
   };
@@ -288,7 +337,7 @@ export function MiniOverlay() {
       className={`mini-overlay ${isCollapsing ? "collapsing" : ""} ${isExpandingToFull ? "expanding-to-full" : ""}`}
       data-tauri-drag-region
       onMouseDown={handleStartDrag}
-      onMouseEnter={onMouseEnter}
+      onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
     >
       {/* Header: Clean, No glowing dot, No stream badge */}
@@ -401,6 +450,14 @@ export function MiniOverlay() {
       {/* Transport Controls + Volume */}
       <div className="mini-controls" data-tauri-drag-region>
         <div className="mini-transport">
+          <button
+            className={`mini-btn shuffle-btn ${shuffle ? "active" : ""}`}
+            onClick={toggleShuffle}
+            title={shuffle ? "Случайный порядок: включён" : "Случайный порядок: выключен"}
+            aria-label="Случайный порядок"
+          >
+            <ShuffleIcon size={13} />
+          </button>
           <button
             className="mini-btn"
             onClick={() => void prev()}

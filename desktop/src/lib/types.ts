@@ -169,7 +169,7 @@ export interface ToastMessage {
 }
 
 export interface RemoteCommand {
-  action: "play" | "pause" | "toggle" | "next" | "prev" | "seek" | "volume" | "play_track";
+  action: "play" | "pause" | "toggle" | "next" | "prev" | "seek" | "volume" | "shuffle" | "play_track";
   position?: number | null;
   volume?: number | null;
   trackId?: string | null;

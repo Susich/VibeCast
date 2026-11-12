@@ -260,14 +260,18 @@ fn run_windows_hotkey_loop(app: AppHandle) {
             if msg.message == WM_HOTKEY {
                 let id = msg.wparam as i32;
                 if let Some((_, action)) = active_hotkeys.iter().find(|(h_id, _)| *h_id == id) {
-                    if action == "toggle_overlay" {
-                        if let Some(w) = app.get_webview_window("main") {
+                    if let Some(w) = app.get_webview_window("main") {
+                        if action == "toggle_overlay" {
                             let is_visible = w.is_visible().unwrap_or(false);
                             let is_minimized = w.is_minimized().unwrap_or(false);
                             if !is_visible || is_minimized {
                                 // Window is closed to tray or minimized - ignore toggle_overlay hotkey
                                 continue;
                             }
+                        }
+                        #[cfg(target_os = "windows")]
+                        if let Ok(hwnd) = w.hwnd() {
+                            crate::commands::win32_overlay::bring_to_topmost(hwnd.0 as *mut _);
                         }
                     }
                     let _ = app.emit("global-hotkey", serde_json::json!({ "action": action }));

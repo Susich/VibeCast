@@ -4149,6 +4149,21 @@ body.is-overlay #root,
   cursor: default;
 }
 
+.mini-btn.shuffle-btn {
+  color: var(--text-muted);
+}
+
+.mini-btn.shuffle-btn:hover:not(:disabled) {
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mini-btn.shuffle-btn.active {
+  color: var(--accent);
+  background: rgba(0, 240, 255, 0.12);
+  box-shadow: 0 0 8px var(--accent-shadow, rgba(0, 240, 255, 0.25));
+}
+
 .mini-btn.play-btn {
   background: var(--accent);
   color: #0d0e15;
