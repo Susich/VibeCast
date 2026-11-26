@@ -350,6 +350,14 @@ pub struct CacheProgress {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkCacheProgress {
+    pub active: bool,
+    pub completed: usize,
+    pub total: usize,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct VersionEvent {
     pub version: i64,

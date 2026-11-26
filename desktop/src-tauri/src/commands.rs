@@ -461,6 +461,107 @@ pub async fn cache_track(
 }
 
 #[tauri::command]
+pub async fn cache_all_tracks(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<crate::models::BulkCacheProgress, String> {
+    let session = state
+        .session()
+        .ok_or_else(|| "Телефон не подключен".to_string())?;
+    if !state.online.load(Ordering::SeqCst) {
+        return Err("Телефон недоступен".to_string());
+    }
+    if state.bulk_caching.swap(true, Ordering::SeqCst) {
+        return Err("Скачивание всех треков уже выполняется".to_string());
+    }
+
+    let query = SearchQuery {
+        limit: Some(100_000),
+        offset: Some(0),
+        ..Default::default()
+    };
+    let all_rows = match state.db.search(&query) {
+        Ok(res) => res.tracks,
+        Err(err) => {
+            state.bulk_caching.store(false, Ordering::SeqCst);
+            return Err(err);
+        }
+    };
+
+    let to_download: Vec<Track> = all_rows
+        .into_iter()
+        .map(|row| row.track)
+        .filter(|track| state.cache.cached_path(track).is_none())
+        .collect();
+
+    let total = to_download.len();
+    if total == 0 {
+        state.bulk_caching.store(false, Ordering::SeqCst);
+        let done_status = crate::models::BulkCacheProgress {
+            active: false,
+            completed: 0,
+            total: 0,
+        };
+        let _ = app.emit("cache://bulk_progress", &done_status);
+        return Ok(done_status);
+    }
+
+    state.bulk_cache_cancel.store(false, Ordering::SeqCst);
+    let initial = crate::models::BulkCacheProgress {
+        active: true,
+        completed: 0,
+        total,
+    };
+    let _ = app.emit("cache://bulk_progress", &initial);
+
+    let bg_app = app.clone();
+    let base_url = session.base_url;
+    let token = session.token;
+    tauri::async_runtime::spawn(async move {
+        let mut completed = 0usize;
+        for track in to_download {
+            let st = bg_app.state::<AppState>();
+            if st.bulk_cache_cancel.load(Ordering::SeqCst)
+                || st.session().is_none()
+                || !st.online.load(Ordering::SeqCst)
+            {
+                break;
+            }
+            if st.cache.cached_path(&track).is_none() {
+                let _ = st.db.save_cached_track(&track);
+                let _ = st.cache.download_and_notify(&track, &base_url, &token).await;
+            }
+            completed += 1;
+            let _ = bg_app.emit(
+                "cache://bulk_progress",
+                crate::models::BulkCacheProgress {
+                    active: true,
+                    completed,
+                    total,
+                },
+            );
+        }
+        let st = bg_app.state::<AppState>();
+        st.bulk_caching.store(false, Ordering::SeqCst);
+        let _ = bg_app.emit(
+            "cache://bulk_progress",
+            crate::models::BulkCacheProgress {
+                active: false,
+                completed,
+                total,
+            },
+        );
+    });
+
+    Ok(initial)
+}
+
+#[tauri::command]
+pub fn cancel_cache_all(state: State<'_, AppState>) {
+    state.bulk_cache_cancel.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
 pub fn set_cache_mode(state: State<'_, AppState>, mode: String) -> Result<String, String> {
     let mode = if mode == "manual" { "manual" } else { "auto" };
     state.db.set_setting("cache_mode", mode)?;

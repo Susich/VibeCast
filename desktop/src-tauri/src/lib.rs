@@ -34,6 +34,14 @@ pub fn run() {
     }
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+                let _ = app.emit("window://restored", ());
+            }
+        }))
         .setup(|app| {
             // The window is deliberately compact for 125%-scaled 1366x768 /
             // 1536x864 screens. DPI awareness itself comes from app.manifest.
@@ -183,6 +191,8 @@ pub fn run() {
             commands::clear_cache,
             commands::delete_cached_track,
             commands::cache_track,
+            commands::cache_all_tracks,
+            commands::cancel_cache_all,
             commands::set_cache_mode,
             commands::open_cache_dir,
             commands::update_settings,

@@ -12,7 +12,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Toasts } from "./components/Toasts";
 import { TopBar } from "./components/TopBar";
 import { TrackList } from "./components/TrackList";
-import { DiscIcon, DownloadIcon, MusicIcon, RadioIcon, UsersIcon, WifiOffIcon, XIcon } from "./components/Icons";
+import { DiscIcon, DownloadIcon, MusicIcon, RadioIcon, SpinnerIcon, UsersIcon, WifiOffIcon, XIcon } from "./components/Icons";
 
 function ViewHeader() {
   const view = useStore((state) => state.view);
@@ -22,6 +22,12 @@ function ViewHeader() {
   const facets = useStore((state) => state.facets);
   const clearFilters = useStore((state) => state.clearFilters);
   const loading = useStore((state) => state.loading);
+  const server = useStore((state) => state.server);
+  const stats = useStore((state) => state.stats);
+  const cachedCount = useStore((state) => state.cachedCount);
+  const bulkCache = useStore((state) => state.bulkCache);
+  const cacheAllTracks = useStore((state) => state.cacheAllTracks);
+  const cancelCacheAll = useStore((state) => state.cancelCacheAll);
 
   let title = "Все треки";
   let countStr = formatCount(total, "трек", "трека", "треков");
@@ -42,6 +48,7 @@ function ViewHeader() {
   }
 
   const hasFilter = Boolean((artist || album) && view === "tracks");
+  const canCacheAll = view === "tracks" && Boolean(server?.online) && stats.tracks > 0 && cachedCount < stats.tracks;
 
   return (
     <div className="view-header">
@@ -51,15 +58,39 @@ function ViewHeader() {
           <span className="view-count view-count-anim">{loading ? "…" : countStr}</span>
         </div>
       </div>
-      {hasFilter && (
-        <div className="view-filter-bar">
-          <span className="filter-badge-label">Фильтр:</span>
-          <button className="filter-chip" onClick={clearFilters} title="Сбросить фильтр и показать все треки">
-            <span className="filter-chip-text">{album && artist ? `${artist} — ${album}` : album ?? artist}</span>
-            <XIcon size={12} />
+      <div className="view-header-actions">
+        {hasFilter && (
+          <div className="view-filter-bar">
+            <span className="filter-badge-label">Фильтр:</span>
+            <button className="filter-chip" onClick={clearFilters} title="Сбросить фильтр и показать все треки">
+              <span className="filter-chip-text">{album && artist ? `${artist} — ${album}` : album ?? artist}</span>
+              <XIcon size={12} />
+            </button>
+          </div>
+        )}
+        {bulkCache.active ? (
+          <button
+            type="button"
+            className="secondary-button compact cache-all-btn is-active"
+            onClick={() => void cancelCacheAll()}
+            title="Нажмите, чтобы остановить скачивание"
+          >
+            <SpinnerIcon size={14} className="spin" />
+            <span>Скачивается {bulkCache.completed}/{bulkCache.total}</span>
+            <XIcon size={13} />
           </button>
-        </div>
-      )}
+        ) : canCacheAll ? (
+          <button
+            type="button"
+            className="secondary-button compact cache-all-btn"
+            onClick={() => void cacheAllTracks()}
+            title="Скачать все треки с телефона в локальный кэш"
+          >
+            <DownloadIcon size={14} />
+            <span>Скачать всё в кэш</span>
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

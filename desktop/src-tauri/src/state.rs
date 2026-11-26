@@ -25,6 +25,8 @@ pub struct AppState {
     pub sse_generation: AtomicU64,
     pub connection_epoch: AtomicU64,
     pub sync_lock: tokio::sync::Mutex<()>,
+    pub bulk_caching: AtomicBool,
+    pub bulk_cache_cancel: AtomicBool,
 }
 
 impl AppState {
@@ -122,6 +124,8 @@ impl AppState {
             sse_generation: AtomicU64::new(0),
             connection_epoch: AtomicU64::new(0),
             sync_lock: tokio::sync::Mutex::new(()),
+            bulk_caching: AtomicBool::new(false),
+            bulk_cache_cancel: AtomicBool::new(false),
         })
     }
 

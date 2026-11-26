@@ -5,6 +5,7 @@ import { errorText } from "./lib/format";
 import { applyTheme } from "./themes";
 import type {
   Bootstrap,
+  BulkCacheProgress,
   CacheProgress,
   CacheStats,
   Device,
@@ -67,6 +68,7 @@ interface Store {
   covers: Record<string, string>;
   coverLoading: Record<string, boolean>;
   progress: Record<string, CacheProgress>;
+  bulkCache: BulkCacheProgress;
   toasts: ToastEntry[];
 
   theme: string;
@@ -121,6 +123,9 @@ interface Store {
   setCacheMode: (mode: "auto" | "manual") => Promise<void>;
   deleteCachedTrack: (trackId: string) => Promise<void>;
   cacheTrack: (trackId: string) => Promise<void>;
+  cacheAllTracks: () => Promise<void>;
+  cancelCacheAll: () => Promise<void>;
+  onBulkCacheProgress: (progress: BulkCacheProgress) => void;
   onTrackDeleted: (trackId: string, stats: CacheStats) => void;
   resync: () => Promise<void>;
   onLibraryUpdated: (stats: LibraryStats) => void;
@@ -219,6 +224,7 @@ export const useStore = create<Store>()((set, get) => ({
   covers: {},
   coverLoading: {},
   progress: {},
+  bulkCache: { active: false, completed: 0, total: 0 },
   toasts: [],
   theme: "cyberpunk",
   isOverlay: false,
@@ -946,6 +952,29 @@ export const useStore = create<Store>()((set, get) => ({
     }
   },
 
+  async cacheAllTracks() {
+    try {
+      const res = await call<BulkCacheProgress>("cache_all_tracks");
+      set({ bulkCache: res });
+      if (res.total === 0) {
+        get().addToast("Все треки уже сохранены в кэше", "info");
+      } else {
+        get().addToast(`Начато скачивание в кэш (${res.total} треков)`, "info");
+      }
+    } catch (err) {
+      get().addToast(`Не удалось начать скачивание: ${errorText(err)}`, "error");
+    }
+  },
+
+  async cancelCacheAll() {
+    try {
+      await call("cancel_cache_all");
+      get().addToast("Остановка скачивания...", "info");
+    } catch {
+      // ignore
+    }
+  },
+
   async deleteCachedTrack(trackId: string) {
     try {
       const stats = await call<CacheStats>("delete_cached_track", { trackId });
@@ -1043,6 +1072,19 @@ export const useStore = create<Store>()((set, get) => ({
       void call<CacheStats>("cache_stats")
         .then((stats) => set({ cachedCount: stats.count }))
         .catch(() => undefined);
+    }
+  },
+
+  onBulkCacheProgress(progress) {
+    const wasActive = get().bulkCache.active;
+    set({ bulkCache: progress });
+    if (wasActive && !progress.active && progress.total > 0) {
+      get().addToast(
+        progress.completed >= progress.total
+          ? "Все треки сохранены в кэш"
+          : `Скачивание остановлено (${progress.completed} из ${progress.total})`,
+        "success",
+      );
     }
   },
 

@@ -212,6 +212,9 @@ export function SettingsModal() {
   const cachedCount = useStore((state) => state.cachedCount);
   const clearCache = useStore((state) => state.clearCache);
   const setCacheMode = useStore((state) => state.setCacheMode);
+  const bulkCache = useStore((state) => state.bulkCache);
+  const cacheAllTracks = useStore((state) => state.cacheAllTracks);
+  const cancelCacheAll = useStore((state) => state.cancelCacheAll);
   const disconnect = useStore((state) => state.disconnect);
   const addToast = useStore((state) => state.addToast);
   const equalizer = useStore((state) => state.equalizer);
@@ -618,6 +621,17 @@ export function SettingsModal() {
                   </div>
                 </div>
                 <div className="inline-actions">
+                  {server?.online && (
+                    bulkCache.active ? (
+                      <button className="secondary-button compact" onClick={() => void cancelCacheAll()}>
+                        <SpinnerIcon size={14} className="spin" /> Остановить ({bulkCache.completed}/{bulkCache.total})
+                      </button>
+                    ) : (
+                      <button className="primary-button compact" onClick={() => void cacheAllTracks()}>
+                        <DownloadIcon size={15} /> Скачать всё в кэш
+                      </button>
+                    )
+                  )}
                   <button className="secondary-button compact" onClick={openCache}>
                     <FolderIcon size={15} /> Открыть папку
                   </button>
@@ -751,12 +765,12 @@ export function SettingsModal() {
               <section className="settings-section">
                 <div className="section-title">
                   <span>Обновления</span>
-                  <span className="muted">v0.2.14</span>
+                  <span className="muted">v0.2.15</span>
                 </div>
                 <div className="update-box">
                   <div className="update-status-row">
                     <div>
-                      <b>Версия приложения: v0.2.14</b>
+                      <b>Версия приложения: v0.2.15</b>
                       <p className="muted" style={{ margin: "4px 0 0 0", fontSize: 13 }}>
                         Автоматическая проверка свежих релизов с GitHub
                       </p>
@@ -824,7 +838,7 @@ export function SettingsModal() {
 
               <section className="settings-section about-section">
                 <div>
-                  <b>VibeCast 0.2.14</b>
+                  <b>VibeCast 0.2.15</b>
                   <small>Android → Windows / Linux / macOS · HTTP в локальной сети</small>
                 </div>
                 <span className="about-badge">MVP</span>

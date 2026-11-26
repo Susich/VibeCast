@@ -1,5 +1,6 @@
 import { call, listen } from "./api";
 import type {
+  BulkCacheProgress,
   CacheProgress,
   CacheStats,
   Device,
@@ -109,6 +110,10 @@ export function bindEvents(): void {
 
   void listen<CacheProgress>("cache://progress", (progress) => {
     useStore.getState().onCacheProgress(progress);
+  });
+
+  void listen<BulkCacheProgress>("cache://bulk_progress", (progress) => {
+    useStore.getState().onBulkCacheProgress(progress);
   });
 
   void listen<CacheStats>("cache://cleared", (stats) => {

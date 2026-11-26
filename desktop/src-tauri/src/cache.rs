@@ -247,41 +247,50 @@ impl CacheManager {
         let manager = self.clone();
         tauri::async_runtime::spawn(async move {
             let track_id = track.id.clone();
-            let result = manager.download(&track, &base_url, &token).await;
+            let _ = manager.download_and_notify(&track, &base_url, &token).await;
             if let Ok(mut set) = manager.inner.in_flight.lock() {
                 set.remove(&track_id);
             }
-            match result {
-                Ok(()) => {
-                    if let Ok(mut set) = manager.inner.cached.lock() {
-                        set.insert(track_id.clone());
-                    }
-                    if track.cover_id.is_some() {
-                        let _ = manager
-                            .cover_data_url(&track_id, Some(&base_url), Some(&token))
-                            .await;
-                    }
-                    let progress = CacheProgress {
-                        track_id,
-                        received: track.size.max(0) as u64,
-                        total: track.size.max(0) as u64,
-                        done: true,
-                        error: None,
-                    };
-                    let _ = manager.inner.app.emit("cache://progress", progress);
-                }
-                Err(err) => {
-                    let progress = CacheProgress {
-                        track_id,
-                        received: 0,
-                        total: track.size.max(0) as u64,
-                        done: true,
-                        error: Some(err),
-                    };
-                    let _ = manager.inner.app.emit("cache://progress", progress);
-                }
-            }
         });
+    }
+
+    /// Downloads `track` (if not already cached), fetches its cover, updates the
+    /// in-memory cached set, and emits `cache://progress`.
+    pub async fn download_and_notify(&self, track: &Track, base_url: &str, token: &str) -> bool {
+        let track_id = track.id.clone();
+        let result = self.download(track, base_url, token).await;
+        match result {
+            Ok(()) => {
+                if let Ok(mut set) = self.inner.cached.lock() {
+                    set.insert(track_id.clone());
+                }
+                if track.cover_id.is_some() {
+                    let _ = self
+                        .cover_data_url(&track_id, Some(base_url), Some(token))
+                        .await;
+                }
+                let progress = CacheProgress {
+                    track_id,
+                    received: track.size.max(0) as u64,
+                    total: track.size.max(0) as u64,
+                    done: true,
+                    error: None,
+                };
+                let _ = self.inner.app.emit("cache://progress", progress);
+                true
+            }
+            Err(err) => {
+                let progress = CacheProgress {
+                    track_id,
+                    received: 0,
+                    total: track.size.max(0) as u64,
+                    done: true,
+                    error: Some(err),
+                };
+                let _ = self.inner.app.emit("cache://progress", progress);
+                false
+            }
+        }
     }
 
     async fn download(&self, track: &Track, base_url: &str, token: &str) -> Result<(), String> {

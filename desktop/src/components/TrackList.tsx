@@ -7,6 +7,7 @@ import { useStore } from "../store";
 import type { TrackRow } from "../lib/types";
 import { Cover } from "./Cover";
 import {
+  ChevronUpIcon,
   DownloadIcon,
   ListPlusIcon,
   MoreVerticalIcon,
@@ -389,6 +390,7 @@ export function TrackList() {
   const album = useStore((state) => state.album);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -510,7 +512,15 @@ export function TrackList() {
         <span className="right">Время</span>
         <span />
       </div>
-      <div className="track-scroll" ref={parentRef}>
+      <div
+        className="track-scroll"
+        ref={parentRef}
+        onScroll={(e) => {
+          const top = e.currentTarget.scrollTop;
+          if (top > 320 && !showScrollTop) setShowScrollTop(true);
+          else if (top <= 320 && showScrollTop) setShowScrollTop(false);
+        }}
+      >
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((item) => {
             const track = tracks[item.index];
@@ -540,6 +550,17 @@ export function TrackList() {
           })}
         </div>
       </div>
+      {showScrollTop && (
+        <button
+          type="button"
+          className="scroll-top-btn"
+          onClick={() => parentRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+          title="В начало списка"
+          aria-label="В начало списка"
+        >
+          <ChevronUpIcon size={18} />
+        </button>
+      )}
       {contextMenu && (
         <TrackContextMenu
           state={contextMenu}

@@ -163,6 +163,12 @@ export interface CacheProgress {
   error: string | null;
 }
 
+export interface BulkCacheProgress {
+  active: boolean;
+  completed: number;
+  total: number;
+}
+
 export interface ToastMessage {
   message: string;
   level: "info" | "success" | "error";
