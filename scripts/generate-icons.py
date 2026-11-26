@@ -23,6 +23,49 @@ def lerp_color(c1: tuple[int, int, int], c2: tuple[int, int, int], t: float) -> 
     )
 
 
+def create_symbol_layer(size: int = 1024) -> Image.Image:
+    """Render ONLY the minimalist V + dot symbol on a transparent canvas."""
+    ss = 2
+    w = size * ss
+    h = size * ss
+
+    sym_mask = Image.new("L", (w, h), 0)
+    sym_draw = ImageDraw.Draw(sym_mask)
+
+    cx = w * 0.50
+    top_y = h * 0.30
+    bot_y = h * 0.72
+    left_x = w * 0.27
+    right_x = w * 0.73
+    stroke = w * 0.095
+    r_cap = stroke / 2.0
+
+    def draw_capsule(p1: tuple[float, float], p2: tuple[float, float], rad: float) -> None:
+        sym_draw.line([p1, p2], fill=255, width=int(round(rad * 2)))
+        for px, py in (p1, p2):
+            sym_draw.ellipse((px - rad, py - rad, px + rad, py + rad), fill=255)
+
+    draw_capsule((left_x, top_y), (cx, bot_y), r_cap)
+    draw_capsule((right_x, top_y), (cx, bot_y), r_cap)
+
+    dot_r = w * 0.048
+    dot_cy = h * 0.36
+    sym_draw.ellipse((cx - dot_r, dot_cy - dot_r, cx + dot_r, dot_cy + dot_r), fill=255)
+
+    grad = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    grad_px = grad.load()
+    c_start = (0, 240, 255)
+    c_end = (74, 222, 128)
+    for y in range(h):
+        t = (y - top_y) / max(1.0, (bot_y - top_y))
+        c = lerp_color(c_start, c_end, t)
+        for x in range(w):
+            grad_px[x, y] = (c[0], c[1], c[2], 255)
+
+    grad.putalpha(sym_mask)
+    return grad.resize((size, size), Image.LANCZOS)
+
+
 def create_minimalist_logo(size: int = 1024) -> Image.Image:
     """Render a crisp, minimalist geometric VibeCast icon at `size`x`size` with 2x supersampling."""
     ss = 2
@@ -57,48 +100,9 @@ def create_minimalist_logo(size: int = 1024) -> Image.Image:
         width=border_w,
     )
     bg = Image.alpha_composite(bg, border_layer)
-
-    # 4. Minimalist geometric "V" + clean soundwave accent
-    # Draw symbol mask in grayscale first, then apply crisp cyan->mint gradient
-    sym_mask = Image.new("L", (w, h), 0)
-    sym_draw = ImageDraw.Draw(sym_mask)
-
-    cx = w * 0.50
-    top_y = h * 0.30
-    bot_y = h * 0.72
-    left_x = w * 0.27
-    right_x = w * 0.73
-    stroke = w * 0.095
-    r_cap = stroke / 2.0
-
-    def draw_capsule(p1: tuple[float, float], p2: tuple[float, float], rad: float) -> None:
-        sym_draw.line([p1, p2], fill=255, width=int(round(rad * 2)))
-        for px, py in (p1, p2):
-            sym_draw.ellipse((px - rad, py - rad, px + rad, py + rad), fill=255)
-
-    # Left & right arms of minimalist V
-    draw_capsule((left_x, top_y), (cx, bot_y), r_cap)
-    draw_capsule((right_x, top_y), (cx, bot_y), r_cap)
-
-    # Minimalist center audio dot / pulse inside the V
-    dot_r = w * 0.048
-    dot_cy = h * 0.36
-    sym_draw.ellipse((cx - dot_r, dot_cy - dot_r, cx + dot_r, dot_cy + dot_r), fill=255)
-
-    # Gradient fill for the symbol (#00F0FF -> #4ADE80)
-    grad = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    grad_px = grad.load()
-    c_start = (0, 240, 255)   # VibeCyan / Accent
-    c_end = (74, 222, 128)    # VibeGreen
-    for y in range(h):
-        t = (y - top_y) / max(1.0, (bot_y - top_y))
-        c = lerp_color(c_start, c_end, t)
-        for x in range(w):
-            grad_px[x, y] = (c[0], c[1], c[2], 255)
-
-    grad.putalpha(sym_mask)
-    composed = Image.alpha_composite(bg, grad)
-    return composed.resize((size, size), Image.LANCZOS)
+    bg_resized = bg.resize((size, size), Image.LANCZOS)
+    sym = create_symbol_layer(size)
+    return Image.alpha_composite(bg_resized, sym)
 
 
 def make_round_icon(img: Image.Image) -> Image.Image:
@@ -118,6 +122,7 @@ def make_round_icon(img: Image.Image) -> Image.Image:
 def main() -> None:
     print("Generating minimalist VibeCast icons...")
     base_icon = create_minimalist_logo(1024)
+    symbol_only = create_symbol_layer(1024)
 
     # Save master JPEG in assets/vibecast_logo.jpg on dark background
     master_rgb = Image.new("RGB", base_icon.size, (11, 15, 20))
@@ -168,11 +173,11 @@ def main() -> None:
         r_img = round_icon.resize((size, size), Image.LANCZOS)
         r_img.save(out_dir / "ic_launcher_round.png", "PNG")
 
-        # Adaptive icon foreground (centered inside canvas with ~72% safe zone)
+        # Adaptive icon foreground: symbol-only centered in safe zone on #0B0F14 background
         fg = Image.new("RGBA", (fg_size, fg_size), (0, 0, 0, 0))
         inner_size = int(fg_size * 0.72)
         offset = (fg_size - inner_size) // 2
-        inner = base_icon.resize((inner_size, inner_size), Image.LANCZOS)
+        inner = symbol_only.resize((inner_size, inner_size), Image.LANCZOS)
         fg.paste(inner, (offset, offset), inner)
         fg.save(out_dir / "ic_launcher_foreground.png", "PNG")
 

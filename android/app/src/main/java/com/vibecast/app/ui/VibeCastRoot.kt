@@ -108,6 +108,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.vibecast.app.R
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -424,15 +426,14 @@ private fun RemotePlayerScreen(
                     modifier = Modifier
                         .size(46.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Brush.linearGradient(listOf(VibeGreen, VibeCyan)))
-                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp)),
+                        .background(VibeSurfaceHigh)
+                        .border(1.dp, VibeSurfaceBorder, RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Headphones,
-                        contentDescription = "Пульт",
-                        tint = Color(0xFF06210F),
-                        modifier = Modifier.size(24.dp),
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_vibecast_logo),
+                        contentDescription = "VibeCast",
+                        modifier = Modifier.size(30.dp),
                     )
                 }
                 Spacer(Modifier.width(12.dp))
